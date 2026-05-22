@@ -1,16 +1,10 @@
+
 """
 Streamlit Control Panel - Automation for Streamlit App Updates
 ==============================================================
 לוח בקרה לעדכון אוטומטי של אפליקציות Streamlit דרך AI + GitHub.
  
-תכונות:
-- 🔄 רענון תצוגה
-- ⚙️ הגדרות (כולל מעבר בין אפליקציות מרובות)
-- ➕ צירוף תמונה ו/או לינק להמחשה ל-AI
- 
-Secrets נדרשים (Manage app > Secrets):
-    OPENAI_API_KEY = "sk-..."
-    GH_TOKEN = "ghp_..."
+עיצוב: 2 עמודות שוות, ללא גלילה ראשית, מתאים למסכים 15"-27".
 """
  
 import ast
@@ -31,14 +25,17 @@ st.set_page_config(
 )
  
 # ============================================================
-# CSS: RTL + רקע כהה + מסגרות + ביטול גלילה
+# CSS: RTL + רקע כהה + responsive + ביטול גלילה ראשית
 # ============================================================
 st.markdown(
     """
     <style>
+        /* ========== ביטול גלילה של הדף הראשי ========== */
         html, body {
             overflow: hidden !important;
-            height: 100vh;
+            height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         .stApp {
             background-color: #0e1117;
@@ -46,27 +43,64 @@ st.markdown(
             overflow: hidden;
             height: 100vh;
         }
+ 
+        /* ========== ה-block-container ימלא את כל המסך ========== */
         .block-container,
         [data-testid="stMainBlockContainer"] {
-            padding-top: 1rem !important;
-            padding-bottom: 0.5rem !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
+            padding: 0.6rem 0.8rem !important;
             max-width: 100% !important;
+            height: 100vh !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
+ 
+        /* ========== טיפוגרפיה ========== */
         h1, h2, h3, h4, p, label, .stMarkdown {
             color: #FAFAFA !important;
             text-align: right;
             direction: rtl;
         }
-        div[data-testid="stColumn"] > div {
+        /* כותרות h2 - יותר נמוכות כדי לפנות מקום */
+        h2 {
+            font-size: clamp(20px, 2.2vw, 32px) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.2 !important;
+        }
+ 
+        /* ========== מסגרת "כרטיס" סביב כל עמודה - גובה מלא ========== */
+        div[data-testid="stHorizontalBlock"] {
+            height: calc(100vh - 24px) !important;
+            gap: 12px !important;
+        }
+        div[data-testid="stColumn"] {
+            height: 100% !important;
+        }
+        div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
             border: 1px solid #3a3a3a;
             border-radius: 10px;
-            padding: 20px;
+            padding: 14px 16px;
             background-color: #0e1117;
-            height: calc(100vh - 40px);
-            overflow-y: auto;
+            height: 100% !important;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: flex !important;
+            flex-direction: column !important;
         }
+ 
+        /* ========== הסתרת scrollbars במקומות לא רצויים ========== */
+        div[data-testid="stColumn"]::-webkit-scrollbar,
+        div[data-testid="stColumn"] > div::-webkit-scrollbar {
+            display: none;
+        }
+        div[data-testid="stColumn"],
+        div[data-testid="stColumn"] > div {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+ 
+        /* ========== תיבת טקסט - מסגרת אדומה ========== */
         .stTextArea textarea {
             border: 1.5px solid #8B0000 !important;
             background-color: #1a1a1a !important;
@@ -74,6 +108,7 @@ st.markdown(
             text-align: right;
             direction: rtl;
             border-radius: 6px;
+            font-size: 14px !important;
         }
         .stTextInput input {
             background-color: #1a1a1a !important;
@@ -85,62 +120,114 @@ st.markdown(
         .stTextArea label, .stTextInput label {
             text-align: right;
             width: 100%;
+            font-size: 13px !important;
         }
+ 
+        /* ========== כפתורים ========== */
         .stButton button {
             background-color: #1a1a1a;
             color: #FAFAFA;
             border: 1px solid #444;
             border-radius: 6px;
-            padding: 8px 18px;
+            padding: 6px 14px;
+            font-size: 14px;
         }
         .stButton button:hover {
             border-color: #888;
             background-color: #262730;
-            color: #FAFAFA;
         }
-        /* כפתורי אייקון - עיגול */
-        .icon-button button {
-            border-radius: 8px !important;
-            padding: 6px 10px !important;
-            font-size: 18px !important;
-            min-height: 38px !important;
+        .stButton button[kind="primary"] {
+            background-color: #8B0000;
+            border-color: #8B0000;
+        }
+        .stButton button[kind="primary"]:hover {
+            background-color: #a00000;
+            border-color: #a00000;
+        }
+ 
+        /* ========== כפתורי אייקון (קטנים) ========== */
+        .icon-btn .stButton button,
+        .icon-btn div[data-testid="stPopover"] button {
+            min-height: 34px !important;
+            height: 34px !important;
+            width: 38px !important;
+            padding: 0 !important;
+            font-size: 16px !important;
+            border-radius: 6px !important;
+        }
+ 
+        /* ========== iframe - גובה מלא של העמודה ========== */
+        div[data-testid="stIFrame"] {
+            flex: 1 !important;
+            min-height: 0 !important;
+            display: flex !important;
         }
         div[data-testid="stIFrame"] iframe,
         .element-container iframe {
-            height: calc(100vh - 170px) !important;
+            height: 100% !important;
+            min-height: calc(100vh - 130px) !important;
             width: 100% !important;
             border-radius: 6px;
-            background: #ffffff;
+            background: #0e1117;
+            border: none;
         }
-        #MainMenu, footer, header {
-            visibility: hidden;
+ 
+        /* ========== הסתרת ה-chrome של Streamlit ========== */
+        #MainMenu, footer, header,
+        [data-testid="stToolbar"], 
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"] > div:first-child {
+            visibility: hidden !important;
             height: 0 !important;
         }
+ 
+        /* ========== Status widget styling (פתוח) ========== */
         div[data-testid="stStatusWidget"] {
             background-color: #1a1a1a !important;
             border: 1px solid #3a3a3a !important;
+            visibility: visible !important;
         }
-        /* Popover styling */
-        div[data-testid="stPopover"] button {
-            border-radius: 8px !important;
-            padding: 6px 10px !important;
-            font-size: 18px !important;
+ 
+        /* ========== Caption ========== */
+        .stCaption, [data-testid="stCaption"] {
+            font-size: 11px !important;
+            color: #888 !important;
+            margin: 4px 0 !important;
         }
-        /* Selectbox עבור בחירת אפליקציה פעילה */
-        .stSelectbox label {
-            text-align: right;
-            width: 100%;
-        }
-        /* תגי תמונות מצורפות */
+ 
+        /* ========== Tag chips לצרופות ========== */
         .attachment-chip {
             display: inline-block;
             background: #1a1a1a;
             border: 1px solid #8B0000;
             border-radius: 12px;
-            padding: 4px 10px;
-            margin: 4px;
+            padding: 2px 10px;
+            margin: 2px;
             color: #FAFAFA;
-            font-size: 12px;
+            font-size: 11px;
+        }
+ 
+        /* ========== Header row - flex לדחיסה ========== */
+        .header-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+ 
+        /* ========== Expander - דחוס יותר ========== */
+        div[data-testid="stExpander"] {
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            margin-top: 6px;
+        }
+        div[data-testid="stExpander"] summary {
+            padding: 6px 10px !important;
+        }
+ 
+        /* ========== הקטנת margins של widgets ========== */
+        div[data-testid="stVerticalBlock"] > div[data-testid="element-container"] {
+            margin-bottom: 4px !important;
         }
     </style>
     """,
@@ -152,12 +239,12 @@ st.markdown(
 # ============================================================
 DEFAULTS = {
     "configured": False,
-    "apps": {},                  # dict: app_name -> {gh_repo, gh_branch, gh_path, streamlit_url}
-    "active_app": None,          # שם האפליקציה הפעילה
+    "apps": {},
+    "active_app": None,
     "history": [],
-    "iframe_key": 0,             # למניעת cache של iframe
-    "attached_images": [],       # list של (filename, bytes)
-    "attached_urls": [],         # list של URLs
+    "iframe_key": 0,
+    "attached_images": [],
+    "attached_urls": [],
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -175,7 +262,6 @@ def get_secret(key, default=None):
  
  
 def active_config():
-    """ההגדרות של האפליקציה הפעילה."""
     if not st.session_state.active_app:
         return None
     return st.session_state.apps.get(st.session_state.active_app)
@@ -226,7 +312,6 @@ def validate_python(code):
  
  
 def call_ai(original_code, instruction, images=None, extra_urls=None):
-    """פנייה ל-OpenAI לעדכון הקוד - כולל תמונות ולינקים אם צורפו."""
     from openai import OpenAI
  
     client = OpenAI(api_key=get_secret("OPENAI_API_KEY"))
@@ -235,19 +320,17 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
         "You are an expert Python/Streamlit developer. "
         "Update the given Streamlit app code per the user's instruction. "
         "Return ONLY the complete updated Python file. "
-        "Do NOT add explanations or wrap in markdown fences (no ```python). "
+        "Do NOT add explanations or wrap in markdown fences. "
         "Preserve original structure and imports unless changes are required. "
-        "If the user provides reference images, use them as visual guidance for the desired result. "
-        "If the user provides reference URLs, consider them as live examples to learn from. "
+        "If reference images are provided, use them as visual guidance. "
         "Output must be valid Python that runs as-is."
     )
  
-    # בניית תוכן המשתמש - יכול להכיל טקסט + תמונות
     user_text = f"Current code:\n\n{original_code}\n\n---\n\n"
     user_text += f"User instruction (may be in Hebrew):\n{instruction}\n\n"
  
     if extra_urls:
-        user_text += "\nReference URLs (live apps to learn from):\n"
+        user_text += "\nReference URLs:\n"
         for u in extra_urls:
             user_text += f"- {u}\n"
  
@@ -255,11 +338,9 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
  
     user_content = [{"type": "text", "text": user_text}]
  
-    # הוספת תמונות (GPT-4o vision)
     if images:
         for fname, img_bytes in images:
             b64 = base64.b64encode(img_bytes).decode("utf-8")
-            # זיהוי mime type
             mime = "image/png"
             lower = fname.lower()
             if lower.endswith((".jpg", ".jpeg")):
@@ -299,7 +380,7 @@ def commit_to_github(new_code, sha, instruction):
  
  
 # ============================================================
-# מסך הגדרות (הפעלה ראשונה / עריכה)
+# מסך הגדרות
 # ============================================================
 if not st.session_state.configured:
     st.title("🔧 הגדרות סביבת עבודה")
@@ -320,32 +401,32 @@ if not st.session_state.configured:
  
     st.markdown("---")
     st.subheader("📚 רשימת אפליקציות")
-    st.caption("אפשר להגדיר מספר אפליקציות ולעבור ביניהן בלי לערוך הגדרות בכל פעם.")
+    st.caption("אפשר להגדיר מספר אפליקציות ולעבור ביניהן.")
  
-    # רשימת האפליקציות הקיימות
     if st.session_state.apps:
         for app_name in list(st.session_state.apps.keys()):
             app_cfg = st.session_state.apps[app_name]
-            with st.expander(f"📱 {app_name}", expanded=False):
+            is_active = (app_name == st.session_state.active_app)
+            marker = "⭐ " if is_active else ""
+            with st.expander(f"{marker}📱 {app_name}", expanded=False):
                 st.markdown(f"**GitHub:** `{app_cfg['gh_repo']}` | **Branch:** `{app_cfg['gh_branch']}` | **File:** `{app_cfg['gh_path']}`")
                 st.markdown(f"**Streamlit:** {app_cfg['streamlit_url']}")
                 col_x, col_y = st.columns(2)
                 with col_x:
-                    if st.button(f"🗑 מחק", key=f"del_{app_name}"):
+                    if st.button("🗑 מחק", key=f"del_{app_name}"):
                         del st.session_state.apps[app_name]
                         if st.session_state.active_app == app_name:
                             st.session_state.active_app = None
                         st.rerun()
                 with col_y:
-                    if st.button(f"⭐ הפוך לפעיל", key=f"act_{app_name}"):
+                    if not is_active and st.button("⭐ הפוך לפעיל", key=f"act_{app_name}"):
                         st.session_state.active_app = app_name
                         st.rerun()
  
-    # טופס הוספת אפליקציה חדשה
     st.markdown("---")
     st.subheader("➕ הוסף אפליקציה חדשה")
  
-    new_name = st.text_input("שם תיאורי לאפליקציה:", placeholder="Tube Calculator")
+    new_name = st.text_input("שם תיאורי:", placeholder="Tube Calculator")
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("**🐙 GitHub**")
@@ -356,30 +437,29 @@ if not st.session_state.configured:
         )
         gh_branch_in = st.text_input("Branch:", value="main", key="new_branch")
         gh_path_in = st.text_input(
-            "נתיב לקובץ הראשי בריפו:",
+            "נתיב לקובץ הראשי:",
             value="streamlit_app.py",
             key="new_path",
-            help="הקובץ המדויק שה-AI יעדכן (לדוגמה 'app (40).py')",
+            help="לדוגמה: 'app (40).py' אם זה השם המדויק בריפו",
         )
     with col_b:
         st.markdown("**🎈 Streamlit Cloud**")
         sl_url_in = st.text_input(
-            "כתובת האפליקציה (URL):",
+            "URL מלא:",
             placeholder="https://tubecalculator-agc4wsx6yajjx6htfv8syk.streamlit.app/",
             key="new_url",
         )
  
-    if st.button("💾 שמור אפליקציה", type="secondary", disabled=not secrets_ok):
-        # ולידציה
+    if st.button("💾 שמור אפליקציה", disabled=not secrets_ok):
         errors = []
         if not new_name.strip():
-            errors.append("⚠️ יש להזין שם לאפליקציה")
+            errors.append("⚠️ יש להזין שם")
         if not gh_repo_in.strip() or "/" not in gh_repo_in:
-            errors.append("⚠️ פורמט Repository שגוי. צריך להיות: `username/repo`")
+            errors.append("⚠️ פורמט Repository שגוי - צריך `username/repo`")
         if "github.com" in gh_repo_in:
-            errors.append("⚠️ אל תכלול `https://github.com/` ב-Repository - רק `username/repo`")
+            errors.append("⚠️ אל תכלול `https://github.com/` ב-Repository")
         if not sl_url_in.strip():
-            errors.append("⚠️ יש להזין URL של Streamlit")
+            errors.append("⚠️ יש להזין URL")
  
         if errors:
             for e in errors:
@@ -396,7 +476,6 @@ if not st.session_state.configured:
             st.success(f"✅ '{new_name.strip()}' נשמרה!")
             st.rerun()
  
-    # התחל
     st.markdown("---")
     if st.session_state.apps and st.session_state.active_app:
         st.info(f"📌 אפליקציה פעילה: **{st.session_state.active_app}**")
@@ -404,77 +483,71 @@ if not st.session_state.configured:
             st.session_state.configured = True
             st.rerun()
     elif st.session_state.apps:
-        st.warning("⚠️ יש לבחור אפליקציה פעילה ('⭐ הפוך לפעיל')")
+        st.warning("⚠️ יש לבחור אפליקציה פעילה")
     else:
-        st.warning("⚠️ עדיין לא הוגדרה אפליקציה. הוסף לפחות אפליקציה אחת.")
+        st.warning("⚠️ הוסף לפחות אפליקציה אחת")
  
     st.stop()
  
  
 # ============================================================
-# המסך הראשי - שתי עמודות
+# המסך הראשי - 2 עמודות שוות
 # ============================================================
-col1, col2 = st.columns(2, gap="medium")
+col_work, col_preview = st.columns(2, gap="small")
  
 # =========================================================
 # צד ימין: אזור עבודה
 # =========================================================
-with col1:
-    # שורת כותרת עם 3 כפתורי אייקון
-    head_cols = st.columns([4, 0.7, 0.7])
-    with head_cols[0]:
-        st.header("אזור עבודה")
-    with head_cols[1]:
-        st.markdown('<div class="icon-button">', unsafe_allow_html=True)
+with col_work:
+    # שורת כותרת + כפתורי אייקון
+    h_cols = st.columns([5, 0.8, 0.8])
+    with h_cols[0]:
+        st.markdown("## אזור עבודה")
+    with h_cols[1]:
+        st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
         with st.popover("➕", help="צרף תמונה או לינק"):
-            st.markdown("### 📎 צירוף קבצים והפניות")
- 
-            # העלאת תמונה
+            st.markdown("### 📎 צירוף קבצים")
             uploaded_file = st.file_uploader(
-                "העלה תמונה (PNG/JPG):",
+                "תמונה:",
                 type=["png", "jpg", "jpeg", "gif", "webp"],
-                key=f"uploader_{len(st.session_state.attached_images)}",
+                key=f"up_{len(st.session_state.attached_images)}",
+                label_visibility="collapsed",
             )
             if uploaded_file is not None:
-                if st.button("➕ הוסף תמונה", key="add_img_btn"):
+                if st.button("➕ הוסף תמונה", key="add_img"):
                     st.session_state.attached_images.append(
                         (uploaded_file.name, uploaded_file.getvalue())
                     )
                     st.rerun()
- 
             st.markdown("---")
- 
-            # הזנת URL נוסף
             extra_url_input = st.text_input(
-                "לינק לאפליקציה (לדוגמא לבעיה):",
+                "לינק לאפליקציה:",
                 placeholder="https://...",
-                key="extra_url_input",
+                key="extra_url",
+                label_visibility="collapsed",
             )
-            if st.button("➕ הוסף לינק", key="add_url_btn"):
+            if st.button("➕ הוסף לינק", key="add_url"):
                 if extra_url_input.strip():
                     st.session_state.attached_urls.append(extra_url_input.strip())
                     st.rerun()
- 
-            # תצוגה של מה שצורף
             if st.session_state.attached_images or st.session_state.attached_urls:
-                st.markdown("---")
                 st.markdown("**צורפו:**")
                 for i, (fname, _) in enumerate(st.session_state.attached_images):
-                    cc = st.columns([5, 1])
-                    cc[0].markdown(f"🖼 `{fname}`")
-                    if cc[1].button("✖", key=f"rm_img_{i}"):
+                    c1, c2 = st.columns([5, 1])
+                    c1.markdown(f"🖼 `{fname[:25]}`")
+                    if c2.button("✖", key=f"rm_img_{i}"):
                         st.session_state.attached_images.pop(i)
                         st.rerun()
                 for i, url in enumerate(st.session_state.attached_urls):
-                    cc = st.columns([5, 1])
-                    cc[0].markdown(f"🔗 `{url[:40]}...`" if len(url) > 40 else f"🔗 `{url}`")
-                    if cc[1].button("✖", key=f"rm_url_{i}"):
+                    c1, c2 = st.columns([5, 1])
+                    c1.markdown(f"🔗 `{url[:25]}...`" if len(url) > 25 else f"🔗 `{url}`")
+                    if c2.button("✖", key=f"rm_url_{i}"):
                         st.session_state.attached_urls.pop(i)
                         st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-    with head_cols[2]:
-        st.markdown('<div class="icon-button">', unsafe_allow_html=True)
-        if st.button("⚙️", help="הגדרות / החלפת אפליקציה"):
+    with h_cols[2]:
+        st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
+        if st.button("⚙️", help="הגדרות"):
             st.session_state.configured = False
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -482,7 +555,7 @@ with col1:
     # תווית של האפליקציה הפעילה
     st.caption(f"🎯 אפליקציה פעילה: **{st.session_state.active_app}**")
  
-    # אם יש קבצים מצורפים - הצג תקציר
+    # תגיות צרופות
     n_imgs = len(st.session_state.attached_images)
     n_urls = len(st.session_state.attached_urls)
     if n_imgs or n_urls:
@@ -493,10 +566,11 @@ with col1:
             chip_html += f'<span class="attachment-chip">🔗 {n_urls} לינקים</span>'
         st.markdown(chip_html, unsafe_allow_html=True)
  
+    # תיבת ההנחיה
     instruction = st.text_area(
         "הנחיות לשינוי הקוד:",
         placeholder="הקלד כאן את השינוי הרצוי...",
-        height=140,
+        height=130,
         key="instruction_input",
     )
  
@@ -504,42 +578,37 @@ with col1:
  
     if submitted:
         if not instruction.strip():
-            st.warning("⚠️ יש להזין הנחיה לפני השליחה")
+            st.warning("⚠️ יש להזין הנחיה")
         else:
             with st.status("🔄 מעבד...", expanded=True) as status:
                 try:
-                    # 1. שליפה
-                    status.update(label="📥 שולף קוד נוכחי מ-GitHub...")
+                    status.update(label="📥 שולף קוד מ-GitHub...")
                     original_code, file_sha = fetch_current_code()
-                    st.write(f"✅ נשלפו {len(original_code):,} תווים (sha: `{file_sha[:7]}`)")
+                    st.write(f"✅ {len(original_code):,} תווים (sha: `{file_sha[:7]}`)")
  
-                    # 2. AI
-                    n_attach = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
-                    status.update(label=f"🤖 שולח ל-AI ({n_attach} צרופות)...")
+                    n_att = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
+                    status.update(label=f"🤖 שולח ל-AI ({n_att} צרופות)...")
                     new_code = call_ai(
                         original_code,
                         instruction,
                         images=st.session_state.attached_images,
                         extra_urls=st.session_state.attached_urls,
                     )
-                    st.write(f"✅ התקבל קוד מעודכן ({len(new_code):,} תווים)")
+                    st.write(f"✅ קוד מעודכן ({len(new_code):,} תווים)")
  
-                    # 3. validation
-                    status.update(label="🔍 בודק תקינות תחביר...")
+                    status.update(label="🔍 בודק תחביר...")
                     ok, err = validate_python(new_code)
                     if not ok:
-                        status.update(label=f"❌ הקוד פגום: {err}", state="error")
-                        with st.expander("הקוד שהתקבל (לבדיקה):"):
+                        status.update(label=f"❌ קוד פגום: {err}", state="error")
+                        with st.expander("הקוד שהתקבל:"):
                             st.code(new_code, language="python")
                         st.stop()
-                    st.write("✅ הקוד תקין תחבירית")
+                    st.write("✅ תקין")
  
-                    # 4. commit
                     status.update(label="📤 מעלה ל-GitHub...")
                     commit_sha = commit_to_github(new_code, file_sha, instruction)
-                    st.write(f"✅ Commit הצליח: `{commit_sha[:7]}`")
+                    st.write(f"✅ Commit: `{commit_sha[:7]}`")
  
-                    # 5. שמירה בהיסטוריה + ניקוי צרופות
                     st.session_state.history.append({
                         "ts": datetime.now().strftime("%H:%M:%S"),
                         "app": st.session_state.active_app,
@@ -548,6 +617,8 @@ with col1:
                     })
                     st.session_state.attached_images = []
                     st.session_state.attached_urls = []
+                    # רענון אוטומטי של ה-iframe
+                    st.session_state.iframe_key += 1
  
                     status.update(
                         label="✅ הושלם! Streamlit יתפרס תוך 1-3 דקות",
@@ -559,27 +630,26 @@ with col1:
                     if e.response is not None:
                         st.code(e.response.text)
                 except Exception as e:
-                    status.update(label=f"❌ שגיאה: {type(e).__name__}", state="error")
+                    status.update(label=f"❌ {type(e).__name__}", state="error")
                     st.exception(e)
  
     # היסטוריה
     if st.session_state.history:
         with st.expander(f"📜 היסטוריה ({len(st.session_state.history)})"):
-            for h in reversed(st.session_state.history[-15:]):
+            for h in reversed(st.session_state.history[-10:]):
                 st.markdown(
-                    f"`{h['ts']}` · **{h.get('app','?')}** · `{h['commit']}` · {h['instruction'][:80]}"
+                    f"`{h['ts']}` · **{h.get('app','?')}** · `{h['commit']}` · {h['instruction'][:60]}"
                 )
- 
  
 # =========================================================
 # צד שמאל: תצוגת האפליקציה
 # =========================================================
-with col2:
-    head_cols2 = st.columns([5, 0.7])
-    with head_cols2[0]:
-        st.header("תצוגת אפליקציה (Preview)")
-    with head_cols2[1]:
-        st.markdown('<div class="icon-button">', unsafe_allow_html=True)
+with col_preview:
+    h_cols2 = st.columns([6, 0.8])
+    with h_cols2[0]:
+        st.markdown("## תצוגת אפליקציה (Preview)")
+    with h_cols2[1]:
+        st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
         if st.button("🔄", help="רענן תצוגה"):
             st.session_state.iframe_key += 1
             st.rerun()
@@ -587,9 +657,16 @@ with col2:
  
     cfg = active_config()
     if cfg:
-        # מוסיף timestamp כדי שהדפדפן יטען מחדש
-        embed_url = f"{cfg['streamlit_url']}/?embed=true&_r={st.session_state.iframe_key}"
-        components.iframe(embed_url, height=620, scrolling=True)
+        # embed=true מסיר את ה-toolbar/footer של Streamlit
+        embed_url = (
+            f"{cfg['streamlit_url']}/?embed=true"
+            f"&embed_options=hide_toolbar"
+            f"&embed_options=hide_footer"
+            f"&embed_options=hide_loading_screen"
+            f"&_r={st.session_state.iframe_key}"
+        )
+        # height גבוה כי ה-CSS דוחס בכל מקרה ל-100% של העמודה
+        components.iframe(embed_url, height=2000, scrolling=True)
     else:
         st.error("לא הוגדרה אפליקציה פעילה")
  
