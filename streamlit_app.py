@@ -4,17 +4,15 @@ Streamlit Control Panel - Automation for Streamlit App Updates
 לוח בקרה לעדכון אוטומטי של אפליקציות Streamlit דרך AI + GitHub.
  
 תיקונים בגרסה זו:
-- UnicodeEncodeError: ניקוי טוקן GitHub מתווים שאינם ASCII
-- st.iframe במקום st.components.v1.iframe (החדש)
-- embed_options מעודכנים להסתרת toolbar/footer
-- Layout משופר: אזור עבודה דחוס למעלה, תצוגה תופסת את כל המסך
-- ביטול מוחלט של כל scroll bars
+- BUG FIX: st.iframe לא מקבל 'scrolling' - הוסר
+- מסך הגדרות דחוס ב-100vh ללא scroll
+- "הוסף אפליקציה חדשה" מקופל כברירת מחדל אם יש כבר אפליקציות
 """
  
 import ast
 import base64
-import re
 from datetime import datetime
+from urllib.parse import quote
  
 import requests
 import streamlit as st
@@ -30,7 +28,7 @@ st.set_page_config(
 )
  
 # ============================================================
-# CSS משופר - ביטול מוחלט של scroll bars + RTL + responsive
+# CSS - ביטול מוחלט של scroll bars + RTL + responsive + דחיסה
 # ============================================================
 st.markdown(
     """
@@ -60,37 +58,51 @@ st.markdown(
         /* ========== מכל ראשי - מילוי 100% של החלון ========== */
         .block-container,
         [data-testid="stMainBlockContainer"] {
-            padding: 0.5rem 0.8rem !important;
+            padding: 0.4rem 0.7rem !important;
             max-width: 100% !important;
             height: 100vh !important;
             box-sizing: border-box !important;
             overflow: hidden !important;
         }
  
-        /* ========== טיפוגרפיה ========== */
+        /* ========== טיפוגרפיה דחוסה ========== */
         h1, h2, h3, h4, p, label, .stMarkdown {
             color: #FAFAFA !important;
             text-align: right;
             direction: rtl;
         }
-        h2 {
-            font-size: clamp(20px, 2vw, 30px) !important;
-            margin: 0 !important;
+        h1 {
+            font-size: clamp(18px, 1.8vw, 26px) !important;
+            margin: 0 0 6px 0 !important;
             padding: 0 !important;
             line-height: 1.2 !important;
+        }
+        h2 {
+            font-size: clamp(16px, 1.5vw, 22px) !important;
+            margin: 4px 0 !important;
+            padding: 0 !important;
+            line-height: 1.2 !important;
+        }
+        h3 {
+            font-size: clamp(14px, 1.2vw, 18px) !important;
+            margin: 3px 0 !important;
+            padding: 0 !important;
         }
  
         /* ========== עמודות בגובה מלא ========== */
         div[data-testid="stHorizontalBlock"] {
-            height: calc(100vh - 20px) !important;
             gap: 10px !important;
-            overflow: hidden !important;
         }
-        div[data-testid="stColumn"] {
+ 
+        /* רק במסך הראשי - גובה מלא לכרטיסים */
+        .main-screen div[data-testid="stHorizontalBlock"] {
+            height: calc(100vh - 16px) !important;
+        }
+        .main-screen div[data-testid="stColumn"] {
             height: 100% !important;
             overflow: hidden !important;
         }
-        div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+        .main-screen div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
             border: 1px solid #3a3a3a;
             border-radius: 10px;
             padding: 12px 16px;
@@ -101,6 +113,8 @@ st.markdown(
             display: flex !important;
             flex-direction: column !important;
         }
+ 
+        /* ========== ביטול scroll bars בעמודות ========== */
         div[data-testid="stColumn"] *::-webkit-scrollbar {
             display: none !important;
         }
@@ -124,11 +138,14 @@ st.markdown(
             border: 1px solid #444 !important;
             text-align: right;
             direction: ltr;
+            font-size: 13px !important;
+            padding: 4px 8px !important;
         }
         .stTextArea label, .stTextInput label {
             text-align: right;
             width: 100%;
-            font-size: 13px !important;
+            font-size: 12px !important;
+            margin-bottom: 2px !important;
         }
  
         /* ========== כפתורים ========== */
@@ -137,8 +154,9 @@ st.markdown(
             color: #FAFAFA;
             border: 1px solid #444;
             border-radius: 6px;
-            padding: 6px 14px;
-            font-size: 14px;
+            padding: 5px 12px;
+            font-size: 13px;
+            min-height: 32px;
         }
         .stButton button:hover {
             border-color: #888;
@@ -156,11 +174,11 @@ st.markdown(
         /* ========== כפתורי אייקון קטנים ========== */
         .icon-btn .stButton button,
         .icon-btn div[data-testid="stPopover"] button {
-            min-height: 34px !important;
-            height: 34px !important;
-            width: 38px !important;
+            min-height: 32px !important;
+            height: 32px !important;
+            width: 36px !important;
             padding: 0 !important;
-            font-size: 16px !important;
+            font-size: 15px !important;
             border-radius: 6px !important;
         }
  
@@ -173,7 +191,7 @@ st.markdown(
         }
         iframe {
             height: 100% !important;
-            min-height: calc(100vh - 120px) !important;
+            min-height: calc(100vh - 100px) !important;
             width: 100% !important;
             border-radius: 6px !important;
             background: #0e1117 !important;
@@ -190,9 +208,9 @@ st.markdown(
  
         /* ========== Caption קטן ========== */
         .stCaption, [data-testid="stCaption"] {
-            font-size: 11px !important;
+            font-size: 10px !important;
             color: #888 !important;
-            margin: 4px 0 !important;
+            margin: 2px 0 !important;
         }
  
         /* ========== Chips לצרופות ========== */
@@ -207,33 +225,49 @@ st.markdown(
             font-size: 11px;
         }
  
-        /* ========== Status widget ========== */
+        /* ========== Status widget דחוס ========== */
         div[data-testid="stStatusWidget"] {
             background-color: #1a1a1a !important;
             border: 1px solid #3a3a3a !important;
             font-size: 12px !important;
         }
  
-        /* ========== Alert (error/warning) compact ========== */
+        /* ========== Alert דחוס ========== */
         div[data-testid="stAlert"] {
-            padding: 8px 12px !important;
-            font-size: 13px !important;
+            padding: 6px 10px !important;
+            font-size: 12px !important;
+            margin: 4px 0 !important;
+        }
+        div[data-testid="stAlert"] p {
+            font-size: 12px !important;
+            margin: 0 !important;
         }
  
         /* ========== Expander דחוס ========== */
         div[data-testid="stExpander"] {
             border: 1px solid #3a3a3a;
             border-radius: 6px;
-            margin-top: 6px;
+            margin: 2px 0 !important;
         }
         div[data-testid="stExpander"] summary {
-            padding: 6px 10px !important;
+            padding: 4px 10px !important;
             font-size: 12px !important;
+        }
+        div[data-testid="stExpander"] details > div {
+            padding: 6px 10px !important;
         }
  
         /* ========== הקטנת margins ========== */
         div[data-testid="stVerticalBlock"] > div[data-testid="element-container"] {
-            margin-bottom: 4px !important;
+            margin-bottom: 3px !important;
+        }
+        hr {
+            margin: 4px 0 !important;
+        }
+ 
+        /* ========== מסך הגדרות: דחוס לפי גובה החלון ========== */
+        .settings-screen {
+            font-size: 13px;
         }
     </style>
     """,
@@ -258,7 +292,7 @@ for k, v in DEFAULTS.items():
  
  
 # ============================================================
-# Helpers - תיקון Unicode + GitHub + AI
+# Helpers
 # ============================================================
 def get_secret(key, default=""):
     try:
@@ -268,17 +302,11 @@ def get_secret(key, default=""):
  
  
 def clean_ascii(s):
-    """
-    מנקה מחרוזת מכל תו שאינו ASCII הדפיס (32-126).
-    מונע UnicodeEncodeError ב-HTTP headers.
-    """
+    """מסיר תווים שאינם ASCII הדפיס - מונע UnicodeEncodeError ב-HTTP headers."""
     if not s:
         return ""
-    # הסר תווי בקרה, רווחים מיוחדים, BOM, וכו'
     s = s.strip()
-    # השאר רק תווי ASCII דפיסים
-    cleaned = "".join(c for c in s if 32 <= ord(c) < 127)
-    return cleaned
+    return "".join(c for c in s if 32 <= ord(c) < 127)
  
  
 def active_config():
@@ -288,16 +316,10 @@ def active_config():
  
  
 def gh_headers():
-    """
-    בונה headers עם טוקן מנוקה - מונע UnicodeEncodeError.
-    """
     raw_token = get_secret("GH_TOKEN", "")
     clean_token = clean_ascii(raw_token)
     if not clean_token:
-        raise ValueError(
-            "GH_TOKEN ריק או מכיל רק תווים לא חוקיים. "
-            "ייצר מחדש את הטוקן ב-GitHub והדבק שוב ב-Secrets של Streamlit."
-        )
+        raise ValueError("GH_TOKEN ריק או מכיל רק תווים לא חוקיים.")
     return {
         "Authorization": f"token {clean_token}",
         "Accept": "application/vnd.github+json",
@@ -307,10 +329,7 @@ def gh_headers():
  
  
 def validate_token():
-    """
-    בודק את הטוקן מול GitHub API.
-    מחזיר (True, username) אם תקין, (False, error_message) אחרת.
-    """
+    """בודק את הטוקן מול GitHub. מחזיר (True, username) או (False, error)."""
     try:
         headers = gh_headers()
         res = requests.get("https://api.github.com/user", headers=headers, timeout=10)
@@ -328,8 +347,6 @@ def validate_token():
  
 def gh_api_url():
     cfg = active_config()
-    # ה-path עלול להכיל רווחים/תווים מיוחדים - נדאג ל-URL encoding
-    from urllib.parse import quote
     path_encoded = quote(cfg["gh_path"])
     return (
         f"https://api.github.com/repos/{cfg['gh_repo']}"
@@ -386,12 +403,10 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
  
     user_text = f"Current code:\n\n{original_code}\n\n---\n\n"
     user_text += f"User instruction (may be in Hebrew):\n{instruction}\n\n"
- 
     if extra_urls:
         user_text += "\nReference URLs:\n"
         for u in extra_urls:
             user_text += f"- {u}\n"
- 
     user_text += "\nReturn the full updated file."
  
     user_content = [{"type": "text", "text": user_text}]
@@ -425,7 +440,6 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
  
 def commit_to_github(new_code, sha, instruction):
     cfg = active_config()
-    # ה-commit message - מנקה כדי שיהיה ASCII
     safe_instruction = clean_ascii(instruction[:50]) or "update"
     commit_msg = f"Auto-update via Control Panel: {safe_instruction}"
     payload = {
@@ -441,27 +455,30 @@ def commit_to_github(new_code, sha, instruction):
  
 def safe_iframe(url, height=None):
     """
-    תאימות לאחור: משתמש ב-st.iframe (חדש) אם קיים, אחרת בישן.
+    תאימות לאחור: st.iframe (חדש) לא תומך ב-scrolling.
+    components.iframe (ישן) כן תומך - משתמשים בו רק לאחור.
     """
     if hasattr(st, "iframe"):
-        st.iframe(url, height=height, scrolling=True)
+        # st.iframe לא מקבל scrolling - הוא מטופל אוטומטית
+        st.iframe(url, height=height)
     else:
         import streamlit.components.v1 as components
         components.iframe(url, height=height or 800, scrolling=True)
  
  
 # ============================================================
-# מסך הגדרות
+# מסך הגדרות - דחוס לפי 100vh
 # ============================================================
 if not st.session_state.configured:
-    st.title("🔧 הגדרות סביבת עבודה")
+    st.markdown('<div class="settings-screen">', unsafe_allow_html=True)
+    st.markdown("# 🔧 הגדרות סביבת עבודה")
  
     raw_openai = get_secret("OPENAI_API_KEY", "")
     raw_gh = get_secret("GH_TOKEN", "")
     has_openai = bool(clean_ascii(raw_openai))
     has_gh = bool(clean_ascii(raw_gh))
  
-    # בדיקת תקינות secrets
+    # שורת סטטוס Secrets דחוסה
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         if has_openai:
@@ -469,36 +486,30 @@ if not st.session_state.configured:
         else:
             st.error("❌ OPENAI_API_KEY חסר/פגום")
     with col_s2:
+        token_valid = False
         if has_gh:
-            # בדיקה מול GitHub
             valid, info = validate_token()
             if valid:
                 st.success(f"✅ GH_TOKEN תקין (משתמש: {info})")
+                token_valid = True
             else:
-                st.error(f"❌ GH_TOKEN לא תקין: {info}")
-                st.info(
-                    "🔧 **תיקון:** לך ל-https://github.com/settings/tokens, "
-                    "מחק את הטוקן הישן וצור חדש (עם הרשאת `repo`). "
-                    "אז עבור ל-Streamlit > Manage app > Settings > Secrets והדבק שוב."
-                )
+                st.error(f"❌ GH_TOKEN: {info}")
         else:
             st.error("❌ GH_TOKEN חסר")
  
-    if not (has_openai and has_gh):
-        st.markdown(
-            "**הגדר Secrets ב-Streamlit Cloud:**\n"
-            "```toml\n"
-            'OPENAI_API_KEY = "sk-..."\n'
-            'GH_TOKEN = "ghp_..."\n'
-            "```"
+    # הוראות תיקון רק אם הטוקן לא תקין
+    if has_gh and not token_valid:
+        st.info(
+            "🔧 **תיקון:** לך ל-https://github.com/settings/tokens, "
+            "מחק את הטוקן הישן וצור חדש (עם הרשאת `repo`). "
+            "אז עבור ל-Streamlit > Manage app > Settings > Secrets והדבק שוב."
         )
  
     secrets_ok = has_openai and has_gh
  
-    st.markdown("---")
-    st.subheader("📚 רשימת אפליקציות")
- 
+    # ===== רשימת אפליקציות =====
     if st.session_state.apps:
+        st.markdown("### 📚 רשימת אפליקציות")
         for app_name in list(st.session_state.apps.keys()):
             app_cfg = st.session_state.apps[app_name]
             is_active = (app_name == st.session_state.active_app)
@@ -518,83 +529,91 @@ if not st.session_state.configured:
                         st.session_state.active_app = app_name
                         st.rerun()
  
-    st.markdown("---")
-    st.subheader("➕ הוסף אפליקציה חדשה")
+    # ===== הוספת אפליקציה חדשה =====
+    # אם יש כבר אפליקציות - מקופל. אם אין - פתוח.
+    has_apps = bool(st.session_state.apps)
+    with st.expander(
+        "➕ הוסף אפליקציה חדשה",
+        expanded=not has_apps,
+    ):
+        new_name = st.text_input("שם תיאורי:", placeholder="Tube Calculator")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("**🐙 GitHub**")
+            gh_repo_in = st.text_input(
+                "Repository (username/repo):",
+                placeholder="OKsVlad888/Tube_Calculator",
+                key="new_gh_repo",
+            )
+            gh_branch_in = st.text_input("Branch:", value="main", key="new_branch")
+            gh_path_in = st.text_input(
+                "נתיב לקובץ הראשי:",
+                value="streamlit_app.py",
+                key="new_path",
+            )
+        with col_b:
+            st.markdown("**🎈 Streamlit Cloud**")
+            sl_url_in = st.text_input(
+                "URL מלא:",
+                placeholder="https://...streamlit.app/",
+                key="new_url",
+            )
  
-    new_name = st.text_input("שם תיאורי:", placeholder="Tube Calculator")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("**🐙 GitHub**")
-        gh_repo_in = st.text_input(
-            "Repository (username/repo):",
-            placeholder="OKsVlad888/Tube_Calculator",
-            key="new_gh_repo",
-        )
-        gh_branch_in = st.text_input("Branch:", value="main", key="new_branch")
-        gh_path_in = st.text_input(
-            "נתיב לקובץ הראשי:",
-            value="streamlit_app.py",
-            key="new_path",
-            help="לדוגמה: 'app (40).py'",
-        )
-    with col_b:
-        st.markdown("**🎈 Streamlit Cloud**")
-        sl_url_in = st.text_input(
-            "URL מלא:",
-            placeholder="https://tubecalculator-agc4wsx6yajjx6htfv8syk.streamlit.app/",
-            key="new_url",
-        )
+        if st.button("💾 שמור אפליקציה", disabled=not secrets_ok):
+            errors = []
+            if not new_name.strip():
+                errors.append("⚠️ יש להזין שם")
+            if not gh_repo_in.strip() or "/" not in gh_repo_in:
+                errors.append("⚠️ פורמט Repository שגוי - צריך `username/repo`")
+            if "github.com" in gh_repo_in:
+                errors.append("⚠️ אל תכלול `https://github.com/`")
+            if not sl_url_in.strip():
+                errors.append("⚠️ יש להזין URL")
  
-    if st.button("💾 שמור אפליקציה", disabled=not secrets_ok):
-        errors = []
-        if not new_name.strip():
-            errors.append("⚠️ יש להזין שם")
-        if not gh_repo_in.strip() or "/" not in gh_repo_in:
-            errors.append("⚠️ פורמט Repository שגוי - צריך `username/repo`")
-        if "github.com" in gh_repo_in:
-            errors.append("⚠️ אל תכלול `https://github.com/` ב-Repository")
-        if not sl_url_in.strip():
-            errors.append("⚠️ יש להזין URL")
+            if errors:
+                for e in errors:
+                    st.error(e)
+            else:
+                st.session_state.apps[new_name.strip()] = {
+                    "gh_repo": clean_ascii(gh_repo_in.strip()),
+                    "gh_branch": clean_ascii(gh_branch_in.strip()) or "main",
+                    "gh_path": gh_path_in.strip() or "streamlit_app.py",
+                    "streamlit_url": clean_ascii(sl_url_in.strip().rstrip("/")),
+                }
+                if not st.session_state.active_app:
+                    st.session_state.active_app = new_name.strip()
+                st.success(f"✅ '{new_name.strip()}' נשמרה!")
+                st.rerun()
  
-        if errors:
-            for e in errors:
-                st.error(e)
-        else:
-            st.session_state.apps[new_name.strip()] = {
-                "gh_repo": clean_ascii(gh_repo_in.strip()),
-                "gh_branch": clean_ascii(gh_branch_in.strip()) or "main",
-                "gh_path": gh_path_in.strip() or "streamlit_app.py",
-                "streamlit_url": clean_ascii(sl_url_in.strip().rstrip("/")),
-            }
-            if not st.session_state.active_app:
-                st.session_state.active_app = new_name.strip()
-            st.success(f"✅ '{new_name.strip()}' נשמרה!")
-            st.rerun()
- 
-    st.markdown("---")
+    # ===== כפתור התחל =====
     if st.session_state.apps and st.session_state.active_app:
-        st.info(f"📌 אפליקציה פעילה: **{st.session_state.active_app}**")
-        if st.button("▶ התחל", type="primary"):
-            st.session_state.configured = True
-            st.rerun()
+        col_info, col_btn = st.columns([3, 1])
+        with col_info:
+            st.info(f"📌 פעיל: **{st.session_state.active_app}**")
+        with col_btn:
+            if st.button("▶ התחל", type="primary", use_container_width=True):
+                st.session_state.configured = True
+                st.rerun()
     elif st.session_state.apps:
-        st.warning("⚠️ יש לבחור אפליקציה פעילה")
+        st.warning("⚠️ יש לבחור אפליקציה פעילה (⭐)")
     else:
         st.warning("⚠️ הוסף לפחות אפליקציה אחת")
  
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
  
  
 # ============================================================
 # המסך הראשי - 2 עמודות שוות
 # ============================================================
+st.markdown('<div class="main-screen">', unsafe_allow_html=True)
+ 
 col_work, col_preview = st.columns(2, gap="small")
  
 # =========================================================
 # צד ימין: אזור עבודה
 # =========================================================
 with col_work:
-    # שורת כותרת + כפתורי אייקון
     h_cols = st.columns([5, 0.8, 0.8])
     with h_cols[0]:
         st.markdown("## אזור עבודה")
@@ -717,10 +736,10 @@ with col_work:
                     )
  
                 except ValueError as e:
-                    status.update(label=f"❌ הגדרות פגומות", state="error")
+                    status.update(label="❌ הגדרות פגומות", state="error")
                     st.error(str(e))
                 except requests.HTTPError as e:
-                    status.update(label=f"❌ שגיאת GitHub", state="error")
+                    status.update(label="❌ שגיאת GitHub", state="error")
                     if e.response is not None:
                         if e.response.status_code == 404:
                             st.error("הקובץ לא נמצא בריפו. בדוק את 'נתיב לקובץ הראשי' בהגדרות.")
@@ -761,8 +780,6 @@ with col_preview:
  
     cfg = active_config()
     if cfg:
-        # embed=true עם כל ה-flags להסתרת toolbar/footer
-        # ה-parameters הנכונים לפי תיעוד Streamlit Cloud עדכני
         base_url = cfg["streamlit_url"].rstrip("/")
         embed_url = (
             f"{base_url}/?embed=true"
@@ -774,4 +791,6 @@ with col_preview:
         safe_iframe(embed_url, height=2000)
     else:
         st.error("לא הוגדרה אפליקציה פעילה")
+ 
+st.markdown('</div>', unsafe_allow_html=True)
  
