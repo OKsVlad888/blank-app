@@ -2,22 +2,22 @@
 Streamlit Control Panel - Automation for Streamlit App Updates
 ==============================================================
 לוח בקרה לעדכון אוטומטי של אפליקציות Streamlit דרך AI + GitHub.
- 
+
 תיקונים בגרסה זו:
 - BUG FIX: st.iframe לא מקבל 'scrolling' - הוסר
 - מסך הגדרות דחוס ב-100vh ללא scroll
 - "הוסף אפליקציה חדשה" מקופל כברירת מחדל אם יש כבר אפליקציות
 """
- 
+
 import ast
 import base64
 from datetime import datetime
 from urllib.parse import quote
- 
+
 import requests
 import streamlit as st
- 
- 
+
+
 # ============================================================
 # הגדרת עמוד
 # ============================================================
@@ -26,7 +26,7 @@ st.set_page_config(
     page_title="Streamlit Control Panel",
     initial_sidebar_state="collapsed",
 )
- 
+
 # ============================================================
 # CSS - ביטול מוחלט של scroll bars + RTL + responsive + דחיסה
 # ============================================================
@@ -49,12 +49,12 @@ st.markdown(
             display: none !important;
             width: 0 !important;
         }
- 
+
         .stApp {
             background-color: #0e1117;
             direction: rtl;
         }
- 
+
         /* ========== מכל ראשי - מילוי 100% של החלון ========== */
         .block-container,
         [data-testid="stMainBlockContainer"] {
@@ -64,7 +64,7 @@ st.markdown(
             box-sizing: border-box !important;
             overflow: hidden !important;
         }
- 
+
         /* ========== טיפוגרפיה דחוסה ========== */
         h1, h2, h3, h4, p, label, .stMarkdown {
             color: #FAFAFA !important;
@@ -88,12 +88,12 @@ st.markdown(
             margin: 3px 0 !important;
             padding: 0 !important;
         }
- 
+
         /* ========== עמודות בגובה מלא ========== */
         div[data-testid="stHorizontalBlock"] {
             gap: 10px !important;
         }
- 
+
         /* רק במסך הראשי - גובה מלא לכרטיסים */
         .main-screen div[data-testid="stHorizontalBlock"] {
             height: calc(100vh - 16px) !important;
@@ -113,7 +113,7 @@ st.markdown(
             display: flex !important;
             flex-direction: column !important;
         }
- 
+
         /* ========== ביטול scroll bars בעמודות ========== */
         div[data-testid="stColumn"] *::-webkit-scrollbar {
             display: none !important;
@@ -121,7 +121,7 @@ st.markdown(
         div[data-testid="stColumn"] * {
             scrollbar-width: none !important;
         }
- 
+
         /* ========== תיבת טקסט אדומה ========== */
         .stTextArea textarea {
             border: 1.5px solid #8B0000 !important;
@@ -147,7 +147,7 @@ st.markdown(
             font-size: 12px !important;
             margin-bottom: 2px !important;
         }
- 
+
         /* ========== כפתורים ========== */
         .stButton button {
             background-color: #1a1a1a;
@@ -170,7 +170,7 @@ st.markdown(
             background-color: #a00000;
             border-color: #a00000;
         }
- 
+
         /* ========== כפתורי אייקון קטנים ========== */
         .icon-btn .stButton button,
         .icon-btn div[data-testid="stPopover"] button {
@@ -181,7 +181,7 @@ st.markdown(
             font-size: 15px !important;
             border-radius: 6px !important;
         }
- 
+
         /* ========== iframe גובה מלא ========== */
         div[data-testid="stIFrame"],
         iframe {
@@ -196,7 +196,7 @@ st.markdown(
             border-radius: 6px !important;
             background: #0e1117 !important;
         }
- 
+
         /* ========== הסתרת ה-chrome של Streamlit ========== */
         #MainMenu, footer, header,
         [data-testid="stToolbar"], 
@@ -205,14 +205,14 @@ st.markdown(
             height: 0 !important;
             display: none !important;
         }
- 
+
         /* ========== Caption קטן ========== */
         .stCaption, [data-testid="stCaption"] {
             font-size: 10px !important;
             color: #888 !important;
             margin: 2px 0 !important;
         }
- 
+
         /* ========== Chips לצרופות ========== */
         .attachment-chip {
             display: inline-block;
@@ -224,14 +224,14 @@ st.markdown(
             color: #FAFAFA;
             font-size: 11px;
         }
- 
+
         /* ========== Status widget דחוס ========== */
         div[data-testid="stStatusWidget"] {
             background-color: #1a1a1a !important;
             border: 1px solid #3a3a3a !important;
             font-size: 12px !important;
         }
- 
+
         /* ========== Alert דחוס ========== */
         div[data-testid="stAlert"] {
             padding: 6px 10px !important;
@@ -242,7 +242,7 @@ st.markdown(
             font-size: 12px !important;
             margin: 0 !important;
         }
- 
+
         /* ========== Expander דחוס ========== */
         div[data-testid="stExpander"] {
             border: 1px solid #3a3a3a;
@@ -256,7 +256,7 @@ st.markdown(
         div[data-testid="stExpander"] details > div {
             padding: 6px 10px !important;
         }
- 
+
         /* ========== הקטנת margins ========== */
         div[data-testid="stVerticalBlock"] > div[data-testid="element-container"] {
             margin-bottom: 3px !important;
@@ -264,7 +264,7 @@ st.markdown(
         hr {
             margin: 4px 0 !important;
         }
- 
+
         /* ========== מסך הגדרות: דחוס לפי גובה החלון ========== */
         .settings-screen {
             font-size: 13px;
@@ -273,7 +273,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
- 
+
 # ============================================================
 # State init
 # ============================================================
@@ -289,8 +289,8 @@ DEFAULTS = {
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
- 
- 
+
+
 # ============================================================
 # Helpers
 # ============================================================
@@ -299,22 +299,22 @@ def get_secret(key, default=""):
         return st.secrets[key]
     except (KeyError, FileNotFoundError, AttributeError):
         return default
- 
- 
+
+
 def clean_ascii(s):
     """מסיר תווים שאינם ASCII הדפיס - מונע UnicodeEncodeError ב-HTTP headers."""
     if not s:
         return ""
     s = s.strip()
     return "".join(c for c in s if 32 <= ord(c) < 127)
- 
- 
+
+
 def active_config():
     if not st.session_state.active_app:
         return None
     return st.session_state.apps.get(st.session_state.active_app)
- 
- 
+
+
 def gh_headers():
     raw_token = get_secret("GH_TOKEN", "")
     clean_token = clean_ascii(raw_token)
@@ -326,8 +326,8 @@ def gh_headers():
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "Streamlit-Control-Panel",
     }
- 
- 
+
+
 def validate_token():
     """בודק את הטוקן מול GitHub. מחזיר (True, username) או (False, error)."""
     try:
@@ -343,8 +343,42 @@ def validate_token():
         return False, str(e)
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
+def validate_openai_key():
+    """
+    בודק את המפתח של OpenAI מול ה-API.
+    מחזיר (True, info) או (False, error_message).
+    """
+    api_key = clean_ascii(get_secret("OPENAI_API_KEY", ""))
+    if not api_key:
+        return False, "המפתח ריק או מכיל תווים לא חוקיים"
+    
+    # בדיקה בסיסית של פורמט
+    if not (api_key.startswith("sk-") or api_key.startswith("sk_")):
+        return False, "המפתח לא מתחיל ב-'sk-'. ייתכן שזה לא מפתח OpenAI."
+    
+    try:
+        # קריאה זולה ל-OpenAI - רק לבדיקת אימות
+        res = requests.get(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if res.status_code == 200:
+            # מציג רק את 6 התווים הראשונים והאחרונים לבדיקה ויזואלית
+            masked = f"{api_key[:7]}...{api_key[-4:]}"
+            return True, f"מפתח תקין ({masked})"
+        elif res.status_code in (401, 403):
+            return False, "המפתח שגוי או נמחק ב-OpenAI Dashboard"
+        elif res.status_code == 429:
+            return False, "חרגת ממכסת הקריאות. ייתכן שלא טענת כסף בחשבון OpenAI"
+        else:
+            return False, f"שגיאת OpenAI: {res.status_code}"
+    except Exception as e:
+        return False, f"שגיאת חיבור: {e}"
+
+
 def gh_api_url():
     cfg = active_config()
     path_encoded = quote(cfg["gh_path"])
@@ -353,16 +387,16 @@ def gh_api_url():
         f"/contents/{path_encoded}"
         f"?ref={cfg['gh_branch']}"
     )
- 
- 
+
+
 def fetch_current_code():
     res = requests.get(gh_api_url(), headers=gh_headers(), timeout=20)
     res.raise_for_status()
     data = res.json()
     code = base64.b64decode(data["content"]).decode("utf-8")
     return code, data["sha"]
- 
- 
+
+
 def strip_code_fences(text):
     text = text.strip()
     if text.startswith("```"):
@@ -372,25 +406,25 @@ def strip_code_fences(text):
             lines = lines[:-1]
         text = "\n".join(lines)
     return text.strip()
- 
- 
+
+
 def validate_python(code):
     try:
         ast.parse(code)
         return True, None
     except SyntaxError as e:
         return False, f"SyntaxError: {e.msg} (line {e.lineno})"
- 
- 
+
+
 def call_ai(original_code, instruction, images=None, extra_urls=None):
     from openai import OpenAI
- 
+
     api_key = clean_ascii(get_secret("OPENAI_API_KEY", ""))
     if not api_key:
         raise ValueError("OPENAI_API_KEY חסר או לא תקין")
- 
+
     client = OpenAI(api_key=api_key)
- 
+
     system_prompt = (
         "You are an expert Python/Streamlit developer. "
         "Update the given Streamlit app code per the user's instruction. "
@@ -400,7 +434,7 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
         "If reference images are provided, use them as visual guidance. "
         "Output must be valid Python that runs as-is."
     )
- 
+
     user_text = f"Current code:\n\n{original_code}\n\n---\n\n"
     user_text += f"User instruction (may be in Hebrew):\n{instruction}\n\n"
     if extra_urls:
@@ -408,9 +442,9 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
         for u in extra_urls:
             user_text += f"- {u}\n"
     user_text += "\nReturn the full updated file."
- 
+
     user_content = [{"type": "text", "text": user_text}]
- 
+
     if images:
         for fname, img_bytes in images:
             b64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -426,7 +460,7 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{b64}"},
             })
- 
+
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -436,8 +470,8 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
         temperature=0.1,
     )
     return strip_code_fences(completion.choices[0].message.content)
- 
- 
+
+
 def commit_to_github(new_code, sha, instruction):
     cfg = active_config()
     safe_instruction = clean_ascii(instruction[:50]) or "update"
@@ -451,8 +485,8 @@ def commit_to_github(new_code, sha, instruction):
     res = requests.put(gh_api_url(), headers=gh_headers(), json=payload, timeout=30)
     res.raise_for_status()
     return res.json()["commit"]["sha"]
- 
- 
+
+
 def safe_iframe(url, height=None):
     """
     תאימות לאחור: st.iframe (חדש) לא תומך ב-scrolling.
@@ -464,25 +498,31 @@ def safe_iframe(url, height=None):
     else:
         import streamlit.components.v1 as components
         components.iframe(url, height=height or 800, scrolling=True)
- 
- 
+
+
 # ============================================================
 # מסך הגדרות - דחוס לפי 100vh
 # ============================================================
 if not st.session_state.configured:
     st.markdown('<div class="settings-screen">', unsafe_allow_html=True)
     st.markdown("# 🔧 הגדרות סביבת עבודה")
- 
+
     raw_openai = get_secret("OPENAI_API_KEY", "")
     raw_gh = get_secret("GH_TOKEN", "")
     has_openai = bool(clean_ascii(raw_openai))
     has_gh = bool(clean_ascii(raw_gh))
- 
+
     # שורת סטטוס Secrets דחוסה
     col_s1, col_s2 = st.columns(2)
     with col_s1:
+        openai_valid = False
         if has_openai:
-            st.success("✅ OPENAI_API_KEY נמצא")
+            valid, info = validate_openai_key()
+            if valid:
+                st.success(f"✅ OpenAI: {info}")
+                openai_valid = True
+            else:
+                st.error(f"❌ OpenAI: {info}")
         else:
             st.error("❌ OPENAI_API_KEY חסר/פגום")
     with col_s2:
@@ -496,17 +536,23 @@ if not st.session_state.configured:
                 st.error(f"❌ GH_TOKEN: {info}")
         else:
             st.error("❌ GH_TOKEN חסר")
- 
-    # הוראות תיקון רק אם הטוקן לא תקין
+
+    # הוראות תיקון
+    if has_openai and not openai_valid:
+        st.info(
+            "🔧 **תיקון OpenAI:** לך ל-https://platform.openai.com/api-keys, "
+            "צור מפתח חדש, ודא שטענת קרדיט (Billing > Add to credit balance), "
+            "ואז עדכן ב-Streamlit > Manage app > Settings > Secrets."
+        )
     if has_gh and not token_valid:
         st.info(
-            "🔧 **תיקון:** לך ל-https://github.com/settings/tokens, "
+            "🔧 **תיקון GitHub:** לך ל-https://github.com/settings/tokens, "
             "מחק את הטוקן הישן וצור חדש (עם הרשאת `repo`). "
             "אז עבור ל-Streamlit > Manage app > Settings > Secrets והדבק שוב."
         )
- 
-    secrets_ok = has_openai and has_gh
- 
+
+    secrets_ok = openai_valid and token_valid
+
     # ===== רשימת אפליקציות =====
     if st.session_state.apps:
         st.markdown("### 📚 רשימת אפליקציות")
@@ -528,7 +574,7 @@ if not st.session_state.configured:
                     if not is_active and st.button("⭐ הפוך לפעיל", key=f"act_{app_name}"):
                         st.session_state.active_app = app_name
                         st.rerun()
- 
+
     # ===== הוספת אפליקציה חדשה =====
     # אם יש כבר אפליקציות - מקופל. אם אין - פתוח.
     has_apps = bool(st.session_state.apps)
@@ -558,7 +604,7 @@ if not st.session_state.configured:
                 placeholder="https://...streamlit.app/",
                 key="new_url",
             )
- 
+
         if st.button("💾 שמור אפליקציה", disabled=not secrets_ok):
             errors = []
             if not new_name.strip():
@@ -569,7 +615,7 @@ if not st.session_state.configured:
                 errors.append("⚠️ אל תכלול `https://github.com/`")
             if not sl_url_in.strip():
                 errors.append("⚠️ יש להזין URL")
- 
+
             if errors:
                 for e in errors:
                     st.error(e)
@@ -584,7 +630,7 @@ if not st.session_state.configured:
                     st.session_state.active_app = new_name.strip()
                 st.success(f"✅ '{new_name.strip()}' נשמרה!")
                 st.rerun()
- 
+
     # ===== כפתור התחל =====
     if st.session_state.apps and st.session_state.active_app:
         col_info, col_btn = st.columns([3, 1])
@@ -598,18 +644,18 @@ if not st.session_state.configured:
         st.warning("⚠️ יש לבחור אפליקציה פעילה (⭐)")
     else:
         st.warning("⚠️ הוסף לפחות אפליקציה אחת")
- 
+
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
- 
- 
+
+
 # ============================================================
 # המסך הראשי - 2 עמודות שוות
 # ============================================================
 st.markdown('<div class="main-screen">', unsafe_allow_html=True)
- 
+
 col_work, col_preview = st.columns(2, gap="small")
- 
+
 # =========================================================
 # צד ימין: אזור עבודה
 # =========================================================
@@ -665,9 +711,9 @@ with col_work:
             st.session_state.configured = False
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
- 
+
     st.caption(f"🎯 אפליקציה פעילה: **{st.session_state.active_app}**")
- 
+
     n_imgs = len(st.session_state.attached_images)
     n_urls = len(st.session_state.attached_urls)
     if n_imgs or n_urls:
@@ -677,16 +723,16 @@ with col_work:
         if n_urls:
             chip_html += f'<span class="attachment-chip">🔗 {n_urls} לינקים</span>'
         st.markdown(chip_html, unsafe_allow_html=True)
- 
+
     instruction = st.text_area(
         "הנחיות לשינוי הקוד:",
         placeholder="הקלד כאן את השינוי הרצוי...",
         height=130,
         key="instruction_input",
     )
- 
+
     submitted = st.button("שלח הנחיה", type="primary", use_container_width=True)
- 
+
     if submitted:
         if not instruction.strip():
             st.warning("⚠️ יש להזין הנחיה")
@@ -696,7 +742,7 @@ with col_work:
                     status.update(label="📥 שולף קוד מ-GitHub...")
                     original_code, file_sha = fetch_current_code()
                     st.write(f"✅ נשלפו {len(original_code):,} תווים")
- 
+
                     n_att = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
                     status.update(label=f"🤖 שולח ל-AI ({n_att} צרופות)...")
                     new_code = call_ai(
@@ -706,7 +752,7 @@ with col_work:
                         extra_urls=st.session_state.attached_urls,
                     )
                     st.write(f"✅ קוד מעודכן ({len(new_code):,} תווים)")
- 
+
                     status.update(label="🔍 בודק תחביר...")
                     ok, err = validate_python(new_code)
                     if not ok:
@@ -715,11 +761,11 @@ with col_work:
                             st.code(new_code, language="python")
                         st.stop()
                     st.write("✅ תקין")
- 
+
                     status.update(label="📤 מעלה ל-GitHub...")
                     commit_sha = commit_to_github(new_code, file_sha, instruction)
                     st.write(f"✅ Commit: `{commit_sha[:7]}`")
- 
+
                     st.session_state.history.append({
                         "ts": datetime.now().strftime("%H:%M:%S"),
                         "app": st.session_state.active_app,
@@ -729,12 +775,12 @@ with col_work:
                     st.session_state.attached_images = []
                     st.session_state.attached_urls = []
                     st.session_state.iframe_key += 1
- 
+
                     status.update(
                         label="✅ הושלם! Streamlit יתפרס תוך 1-3 דקות",
                         state="complete",
                     )
- 
+
                 except ValueError as e:
                     status.update(label="❌ הגדרות פגומות", state="error")
                     st.error(str(e))
@@ -754,16 +800,46 @@ with col_work:
                         "ייצר טוקן חדש ב-https://github.com/settings/tokens והדבק שוב."
                     )
                 except Exception as e:
-                    status.update(label=f"❌ {type(e).__name__}", state="error")
-                    st.exception(e)
- 
+                    # זיהוי שגיאות OpenAI לפי שם המחלקה
+                    err_name = type(e).__name__
+                    err_msg = str(e)
+                    if "AuthenticationError" in err_name or "401" in err_msg:
+                        status.update(label="❌ מפתח OpenAI שגוי", state="error")
+                        st.error(
+                            "🔑 **המפתח של OpenAI לא תקף.**\n\n"
+                            "ייתכן ש:\n"
+                            "- המפתח שגוי או נמחק\n"
+                            "- לא טענת קרדיט בחשבון OpenAI\n"
+                            "- הועתק עם תווים נסתרים\n\n"
+                            "**תיקון:** "
+                            "1) לך ל-https://platform.openai.com/api-keys\n"
+                            "2) ודא שטענת לפחות $5 ב-Billing\n"
+                            "3) צור מפתח חדש\n"
+                            "4) עדכן ב-Streamlit > Manage app > Settings > Secrets"
+                        )
+                    elif "RateLimitError" in err_name or "429" in err_msg:
+                        status.update(label="❌ חרגת ממכסת OpenAI", state="error")
+                        st.error(
+                            "💳 חרגת ממכסת הקריאות. ייתכן שצריך לטעון עוד קרדיט "
+                            "ב-https://platform.openai.com/account/billing"
+                        )
+                    elif "InsufficientQuota" in err_name or "insufficient_quota" in err_msg:
+                        status.update(label="❌ אין קרדיט ב-OpenAI", state="error")
+                        st.error(
+                            "💳 אין מספיק קרדיט בחשבון OpenAI שלך. "
+                            "טען קרדיט ב-https://platform.openai.com/account/billing"
+                        )
+                    else:
+                        status.update(label=f"❌ {err_name}", state="error")
+                        st.exception(e)
+
     if st.session_state.history:
         with st.expander(f"📜 היסטוריה ({len(st.session_state.history)})"):
             for h in reversed(st.session_state.history[-10:]):
                 st.markdown(
                     f"`{h['ts']}` · `{h['commit']}` · {h['instruction'][:60]}"
                 )
- 
+
 # =========================================================
 # צד שמאל: תצוגת האפליקציה
 # =========================================================
@@ -777,7 +853,7 @@ with col_preview:
             st.session_state.iframe_key += 1
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
- 
+
     cfg = active_config()
     if cfg:
         base_url = cfg["streamlit_url"].rstrip("/")
@@ -791,6 +867,5 @@ with col_preview:
         safe_iframe(embed_url, height=2000)
     else:
         st.error("לא הוגדרה אפליקציה פעילה")
- 
+
 st.markdown('</div>', unsafe_allow_html=True)
- 
