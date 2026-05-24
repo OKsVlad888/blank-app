@@ -1,19 +1,24 @@
-
 """
 Streamlit Control Panel - Automation for Streamlit App Updates
 ==============================================================
 לוח בקרה לעדכון אוטומטי של אפליקציות Streamlit דרך AI + GitHub.
  
-עיצוב: 2 עמודות שוות, ללא גלילה ראשית, מתאים למסכים 15"-27".
+תיקונים בגרסה זו:
+- UnicodeEncodeError: ניקוי טוקן GitHub מתווים שאינם ASCII
+- st.iframe במקום st.components.v1.iframe (החדש)
+- embed_options מעודכנים להסתרת toolbar/footer
+- Layout משופר: אזור עבודה דחוס למעלה, תצוגה תופסת את כל המסך
+- ביטול מוחלט של כל scroll bars
 """
  
 import ast
 import base64
+import re
 from datetime import datetime
  
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
+ 
  
 # ============================================================
 # הגדרת עמוד
@@ -25,34 +30,41 @@ st.set_page_config(
 )
  
 # ============================================================
-# CSS: RTL + רקע כהה + responsive + ביטול גלילה ראשית
+# CSS משופר - ביטול מוחלט של scroll bars + RTL + responsive
 # ============================================================
 st.markdown(
     """
     <style>
-        /* ========== ביטול גלילה של הדף הראשי ========== */
-        html, body {
+        /* ========== ביטול גלילה גלובלית ========== */
+        html, body, .stApp {
             overflow: hidden !important;
             height: 100vh !important;
+            max-height: 100vh !important;
             margin: 0 !important;
             padding: 0 !important;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
+        html::-webkit-scrollbar,
+        body::-webkit-scrollbar,
+        .stApp::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+        }
+ 
         .stApp {
             background-color: #0e1117;
             direction: rtl;
-            overflow: hidden;
-            height: 100vh;
         }
  
-        /* ========== ה-block-container ימלא את כל המסך ========== */
+        /* ========== מכל ראשי - מילוי 100% של החלון ========== */
         .block-container,
         [data-testid="stMainBlockContainer"] {
-            padding: 0.6rem 0.8rem !important;
+            padding: 0.5rem 0.8rem !important;
             max-width: 100% !important;
             height: 100vh !important;
             box-sizing: border-box !important;
-            display: flex !important;
-            flex-direction: column !important;
+            overflow: hidden !important;
         }
  
         /* ========== טיפוגרפיה ========== */
@@ -61,46 +73,42 @@ st.markdown(
             text-align: right;
             direction: rtl;
         }
-        /* כותרות h2 - יותר נמוכות כדי לפנות מקום */
         h2 {
-            font-size: clamp(20px, 2.2vw, 32px) !important;
+            font-size: clamp(20px, 2vw, 30px) !important;
             margin: 0 !important;
             padding: 0 !important;
             line-height: 1.2 !important;
         }
  
-        /* ========== מסגרת "כרטיס" סביב כל עמודה - גובה מלא ========== */
+        /* ========== עמודות בגובה מלא ========== */
         div[data-testid="stHorizontalBlock"] {
-            height: calc(100vh - 24px) !important;
-            gap: 12px !important;
+            height: calc(100vh - 20px) !important;
+            gap: 10px !important;
+            overflow: hidden !important;
         }
         div[data-testid="stColumn"] {
             height: 100% !important;
+            overflow: hidden !important;
         }
         div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
             border: 1px solid #3a3a3a;
             border-radius: 10px;
-            padding: 14px 16px;
+            padding: 12px 16px;
             background-color: #0e1117;
             height: 100% !important;
             box-sizing: border-box;
-            overflow: hidden;
+            overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
         }
- 
-        /* ========== הסתרת scrollbars במקומות לא רצויים ========== */
-        div[data-testid="stColumn"]::-webkit-scrollbar,
-        div[data-testid="stColumn"] > div::-webkit-scrollbar {
-            display: none;
+        div[data-testid="stColumn"] *::-webkit-scrollbar {
+            display: none !important;
         }
-        div[data-testid="stColumn"],
-        div[data-testid="stColumn"] > div {
-            scrollbar-width: none;
-            -ms-overflow-style: none;
+        div[data-testid="stColumn"] * {
+            scrollbar-width: none !important;
         }
  
-        /* ========== תיבת טקסט - מסגרת אדומה ========== */
+        /* ========== תיבת טקסט אדומה ========== */
         .stTextArea textarea {
             border: 1.5px solid #8B0000 !important;
             background-color: #1a1a1a !important;
@@ -145,7 +153,7 @@ st.markdown(
             border-color: #a00000;
         }
  
-        /* ========== כפתורי אייקון (קטנים) ========== */
+        /* ========== כפתורי אייקון קטנים ========== */
         .icon-btn .stButton button,
         .icon-btn div[data-testid="stPopover"] button {
             min-height: 34px !important;
@@ -156,46 +164,38 @@ st.markdown(
             border-radius: 6px !important;
         }
  
-        /* ========== iframe - גובה מלא של העמודה ========== */
-        div[data-testid="stIFrame"] {
+        /* ========== iframe גובה מלא ========== */
+        div[data-testid="stIFrame"],
+        iframe {
             flex: 1 !important;
             min-height: 0 !important;
-            display: flex !important;
+            border: none !important;
         }
-        div[data-testid="stIFrame"] iframe,
-        .element-container iframe {
+        iframe {
             height: 100% !important;
-            min-height: calc(100vh - 130px) !important;
+            min-height: calc(100vh - 120px) !important;
             width: 100% !important;
-            border-radius: 6px;
-            background: #0e1117;
-            border: none;
+            border-radius: 6px !important;
+            background: #0e1117 !important;
         }
  
         /* ========== הסתרת ה-chrome של Streamlit ========== */
         #MainMenu, footer, header,
         [data-testid="stToolbar"], 
-        [data-testid="stDecoration"],
-        [data-testid="stStatusWidget"] > div:first-child {
+        [data-testid="stDecoration"] {
             visibility: hidden !important;
             height: 0 !important;
+            display: none !important;
         }
  
-        /* ========== Status widget styling (פתוח) ========== */
-        div[data-testid="stStatusWidget"] {
-            background-color: #1a1a1a !important;
-            border: 1px solid #3a3a3a !important;
-            visibility: visible !important;
-        }
- 
-        /* ========== Caption ========== */
+        /* ========== Caption קטן ========== */
         .stCaption, [data-testid="stCaption"] {
             font-size: 11px !important;
             color: #888 !important;
             margin: 4px 0 !important;
         }
  
-        /* ========== Tag chips לצרופות ========== */
+        /* ========== Chips לצרופות ========== */
         .attachment-chip {
             display: inline-block;
             background: #1a1a1a;
@@ -207,15 +207,20 @@ st.markdown(
             font-size: 11px;
         }
  
-        /* ========== Header row - flex לדחיסה ========== */
-        .header-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
+        /* ========== Status widget ========== */
+        div[data-testid="stStatusWidget"] {
+            background-color: #1a1a1a !important;
+            border: 1px solid #3a3a3a !important;
+            font-size: 12px !important;
         }
  
-        /* ========== Expander - דחוס יותר ========== */
+        /* ========== Alert (error/warning) compact ========== */
+        div[data-testid="stAlert"] {
+            padding: 8px 12px !important;
+            font-size: 13px !important;
+        }
+ 
+        /* ========== Expander דחוס ========== */
         div[data-testid="stExpander"] {
             border: 1px solid #3a3a3a;
             border-radius: 6px;
@@ -223,9 +228,10 @@ st.markdown(
         }
         div[data-testid="stExpander"] summary {
             padding: 6px 10px !important;
+            font-size: 12px !important;
         }
  
-        /* ========== הקטנת margins של widgets ========== */
+        /* ========== הקטנת margins ========== */
         div[data-testid="stVerticalBlock"] > div[data-testid="element-container"] {
             margin-bottom: 4px !important;
         }
@@ -252,13 +258,27 @@ for k, v in DEFAULTS.items():
  
  
 # ============================================================
-# Helpers
+# Helpers - תיקון Unicode + GitHub + AI
 # ============================================================
-def get_secret(key, default=None):
+def get_secret(key, default=""):
     try:
         return st.secrets[key]
     except (KeyError, FileNotFoundError, AttributeError):
         return default
+ 
+ 
+def clean_ascii(s):
+    """
+    מנקה מחרוזת מכל תו שאינו ASCII הדפיס (32-126).
+    מונע UnicodeEncodeError ב-HTTP headers.
+    """
+    if not s:
+        return ""
+    # הסר תווי בקרה, רווחים מיוחדים, BOM, וכו'
+    s = s.strip()
+    # השאר רק תווי ASCII דפיסים
+    cleaned = "".join(c for c in s if 32 <= ord(c) < 127)
+    return cleaned
  
  
 def active_config():
@@ -268,18 +288,52 @@ def active_config():
  
  
 def gh_headers():
+    """
+    בונה headers עם טוקן מנוקה - מונע UnicodeEncodeError.
+    """
+    raw_token = get_secret("GH_TOKEN", "")
+    clean_token = clean_ascii(raw_token)
+    if not clean_token:
+        raise ValueError(
+            "GH_TOKEN ריק או מכיל רק תווים לא חוקיים. "
+            "ייצר מחדש את הטוקן ב-GitHub והדבק שוב ב-Secrets של Streamlit."
+        )
     return {
-        "Authorization": f"token {get_secret('GH_TOKEN')}",
+        "Authorization": f"token {clean_token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "Streamlit-Control-Panel",
     }
+ 
+ 
+def validate_token():
+    """
+    בודק את הטוקן מול GitHub API.
+    מחזיר (True, username) אם תקין, (False, error_message) אחרת.
+    """
+    try:
+        headers = gh_headers()
+        res = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+        if res.status_code == 200:
+            return True, res.json().get("login", "?")
+        elif res.status_code == 401:
+            return False, "טוקן GitHub שגוי או פג תוקף"
+        else:
+            return False, f"שגיאת GitHub: {res.status_code}"
+    except ValueError as e:
+        return False, str(e)
+    except Exception as e:
+        return False, f"שגיאת חיבור: {e}"
  
  
 def gh_api_url():
     cfg = active_config()
+    # ה-path עלול להכיל רווחים/תווים מיוחדים - נדאג ל-URL encoding
+    from urllib.parse import quote
+    path_encoded = quote(cfg["gh_path"])
     return (
         f"https://api.github.com/repos/{cfg['gh_repo']}"
-        f"/contents/{cfg['gh_path']}"
+        f"/contents/{path_encoded}"
         f"?ref={cfg['gh_branch']}"
     )
  
@@ -314,7 +368,11 @@ def validate_python(code):
 def call_ai(original_code, instruction, images=None, extra_urls=None):
     from openai import OpenAI
  
-    client = OpenAI(api_key=get_secret("OPENAI_API_KEY"))
+    api_key = clean_ascii(get_secret("OPENAI_API_KEY", ""))
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY חסר או לא תקין")
+ 
+    client = OpenAI(api_key=api_key)
  
     system_prompt = (
         "You are an expert Python/Streamlit developer. "
@@ -367,16 +425,29 @@ def call_ai(original_code, instruction, images=None, extra_urls=None):
  
 def commit_to_github(new_code, sha, instruction):
     cfg = active_config()
-    commit_msg = f"Auto-update via Control Panel: {instruction[:60]}"
+    # ה-commit message - מנקה כדי שיהיה ASCII
+    safe_instruction = clean_ascii(instruction[:50]) or "update"
+    commit_msg = f"Auto-update via Control Panel: {safe_instruction}"
     payload = {
         "message": commit_msg,
         "content": base64.b64encode(new_code.encode("utf-8")).decode("utf-8"),
         "sha": sha,
         "branch": cfg["gh_branch"],
     }
-    res = requests.put(gh_api_url(), headers=gh_headers(), json=payload, timeout=20)
+    res = requests.put(gh_api_url(), headers=gh_headers(), json=payload, timeout=30)
     res.raise_for_status()
     return res.json()["commit"]["sha"]
+ 
+ 
+def safe_iframe(url, height=None):
+    """
+    תאימות לאחור: משתמש ב-st.iframe (חדש) אם קיים, אחרת בישן.
+    """
+    if hasattr(st, "iframe"):
+        st.iframe(url, height=height, scrolling=True)
+    else:
+        import streamlit.components.v1 as components
+        components.iframe(url, height=height or 800, scrolling=True)
  
  
 # ============================================================
@@ -385,23 +456,47 @@ def commit_to_github(new_code, sha, instruction):
 if not st.session_state.configured:
     st.title("🔧 הגדרות סביבת עבודה")
  
-    secrets_ok = bool(get_secret("OPENAI_API_KEY")) and bool(get_secret("GH_TOKEN"))
+    raw_openai = get_secret("OPENAI_API_KEY", "")
+    raw_gh = get_secret("GH_TOKEN", "")
+    has_openai = bool(clean_ascii(raw_openai))
+    has_gh = bool(clean_ascii(raw_gh))
  
-    if not secrets_ok:
-        st.error(
-            "❌ **חסרים Secrets ב-Streamlit Cloud!**\n\n"
-            "עבור ל-`Manage app > Settings > Secrets` והגדר:\n"
+    # בדיקת תקינות secrets
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        if has_openai:
+            st.success("✅ OPENAI_API_KEY נמצא")
+        else:
+            st.error("❌ OPENAI_API_KEY חסר/פגום")
+    with col_s2:
+        if has_gh:
+            # בדיקה מול GitHub
+            valid, info = validate_token()
+            if valid:
+                st.success(f"✅ GH_TOKEN תקין (משתמש: {info})")
+            else:
+                st.error(f"❌ GH_TOKEN לא תקין: {info}")
+                st.info(
+                    "🔧 **תיקון:** לך ל-https://github.com/settings/tokens, "
+                    "מחק את הטוקן הישן וצור חדש (עם הרשאת `repo`). "
+                    "אז עבור ל-Streamlit > Manage app > Settings > Secrets והדבק שוב."
+                )
+        else:
+            st.error("❌ GH_TOKEN חסר")
+ 
+    if not (has_openai and has_gh):
+        st.markdown(
+            "**הגדר Secrets ב-Streamlit Cloud:**\n"
             "```toml\n"
             'OPENAI_API_KEY = "sk-..."\n'
             'GH_TOKEN = "ghp_..."\n'
             "```"
         )
-    else:
-        st.success("✅ Secrets קיימים: `OPENAI_API_KEY`, `GH_TOKEN`")
+ 
+    secrets_ok = has_openai and has_gh
  
     st.markdown("---")
     st.subheader("📚 רשימת אפליקציות")
-    st.caption("אפשר להגדיר מספר אפליקציות ולעבור ביניהן.")
  
     if st.session_state.apps:
         for app_name in list(st.session_state.apps.keys()):
@@ -440,7 +535,7 @@ if not st.session_state.configured:
             "נתיב לקובץ הראשי:",
             value="streamlit_app.py",
             key="new_path",
-            help="לדוגמה: 'app (40).py' אם זה השם המדויק בריפו",
+            help="לדוגמה: 'app (40).py'",
         )
     with col_b:
         st.markdown("**🎈 Streamlit Cloud**")
@@ -466,10 +561,10 @@ if not st.session_state.configured:
                 st.error(e)
         else:
             st.session_state.apps[new_name.strip()] = {
-                "gh_repo": gh_repo_in.strip(),
-                "gh_branch": gh_branch_in.strip() or "main",
+                "gh_repo": clean_ascii(gh_repo_in.strip()),
+                "gh_branch": clean_ascii(gh_branch_in.strip()) or "main",
                 "gh_path": gh_path_in.strip() or "streamlit_app.py",
-                "streamlit_url": sl_url_in.strip().rstrip("/"),
+                "streamlit_url": clean_ascii(sl_url_in.strip().rstrip("/")),
             }
             if not st.session_state.active_app:
                 st.session_state.active_app = new_name.strip()
@@ -552,10 +647,8 @@ with col_work:
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
  
-    # תווית של האפליקציה הפעילה
     st.caption(f"🎯 אפליקציה פעילה: **{st.session_state.active_app}**")
  
-    # תגיות צרופות
     n_imgs = len(st.session_state.attached_images)
     n_urls = len(st.session_state.attached_urls)
     if n_imgs or n_urls:
@@ -566,7 +659,6 @@ with col_work:
             chip_html += f'<span class="attachment-chip">🔗 {n_urls} לינקים</span>'
         st.markdown(chip_html, unsafe_allow_html=True)
  
-    # תיבת ההנחיה
     instruction = st.text_area(
         "הנחיות לשינוי הקוד:",
         placeholder="הקלד כאן את השינוי הרצוי...",
@@ -584,7 +676,7 @@ with col_work:
                 try:
                     status.update(label="📥 שולף קוד מ-GitHub...")
                     original_code, file_sha = fetch_current_code()
-                    st.write(f"✅ {len(original_code):,} תווים (sha: `{file_sha[:7]}`)")
+                    st.write(f"✅ נשלפו {len(original_code):,} תווים")
  
                     n_att = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
                     status.update(label=f"🤖 שולח ל-AI ({n_att} צרופות)...")
@@ -617,7 +709,6 @@ with col_work:
                     })
                     st.session_state.attached_images = []
                     st.session_state.attached_urls = []
-                    # רענון אוטומטי של ה-iframe
                     st.session_state.iframe_key += 1
  
                     status.update(
@@ -625,20 +716,33 @@ with col_work:
                         state="complete",
                     )
  
+                except ValueError as e:
+                    status.update(label=f"❌ הגדרות פגומות", state="error")
+                    st.error(str(e))
                 except requests.HTTPError as e:
-                    status.update(label=f"❌ שגיאת GitHub: {e}", state="error")
+                    status.update(label=f"❌ שגיאת GitHub", state="error")
                     if e.response is not None:
-                        st.code(e.response.text)
+                        if e.response.status_code == 404:
+                            st.error("הקובץ לא נמצא בריפו. בדוק את 'נתיב לקובץ הראשי' בהגדרות.")
+                        elif e.response.status_code == 401:
+                            st.error("הטוקן של GitHub שגוי או פג תוקף. ייצר חדש והדבק ב-Secrets.")
+                        else:
+                            st.code(e.response.text[:500])
+                except UnicodeEncodeError:
+                    status.update(label="❌ תווים לא חוקיים בטוקן", state="error")
+                    st.error(
+                        "ה-GH_TOKEN ב-Secrets מכיל תווים לא ASCII. "
+                        "ייצר טוקן חדש ב-https://github.com/settings/tokens והדבק שוב."
+                    )
                 except Exception as e:
                     status.update(label=f"❌ {type(e).__name__}", state="error")
                     st.exception(e)
  
-    # היסטוריה
     if st.session_state.history:
         with st.expander(f"📜 היסטוריה ({len(st.session_state.history)})"):
             for h in reversed(st.session_state.history[-10:]):
                 st.markdown(
-                    f"`{h['ts']}` · **{h.get('app','?')}** · `{h['commit']}` · {h['instruction'][:60]}"
+                    f"`{h['ts']}` · `{h['commit']}` · {h['instruction'][:60]}"
                 )
  
 # =========================================================
@@ -657,16 +761,17 @@ with col_preview:
  
     cfg = active_config()
     if cfg:
-        # embed=true מסיר את ה-toolbar/footer של Streamlit
+        # embed=true עם כל ה-flags להסתרת toolbar/footer
+        # ה-parameters הנכונים לפי תיעוד Streamlit Cloud עדכני
+        base_url = cfg["streamlit_url"].rstrip("/")
         embed_url = (
-            f"{cfg['streamlit_url']}/?embed=true"
-            f"&embed_options=hide_toolbar"
-            f"&embed_options=hide_footer"
+            f"{base_url}/?embed=true"
+            f"&embed_options=show_padding"
+            f"&embed_options=disable_scrolling"
             f"&embed_options=hide_loading_screen"
             f"&_r={st.session_state.iframe_key}"
         )
-        # height גבוה כי ה-CSS דוחס בכל מקרה ל-100% של העמודה
-        components.iframe(embed_url, height=2000, scrolling=True)
+        safe_iframe(embed_url, height=2000)
     else:
         st.error("לא הוגדרה אפליקציה פעילה")
  
