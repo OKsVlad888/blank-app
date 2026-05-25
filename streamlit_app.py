@@ -2,13 +2,13 @@
 Streamlit Control Panel - Multi-Provider AI Edition
 ====================================================
 לוח בקרה לעדכון אוטומטי של אפליקציות Streamlit דרך AI + GitHub.
- 
+
 תומך ב-4 ספקי AI (בחר אחד לפי מה שיש לך):
 - Anthropic Claude (claude-3-5-sonnet)  - מומלץ! עובד מעולה בעברית
 - Google Gemini (gemini-1.5-pro)         - חינמי עם מגבלות
 - Azure OpenAI                            - אם יש לך גישה דרך העבודה
 - OpenAI (gpt-4o)                         - הוריאציה המקורית
- 
+
 Secrets נדרשים (לפחות אחד מהבאים):
     ANTHROPIC_API_KEY = "sk-ant-..."     ← Anthropic Claude
     GOOGLE_API_KEY    = "..."             ← Google Gemini
@@ -20,16 +20,16 @@ Secrets נדרשים (לפחות אחד מהבאים):
 ותמיד צריך:
     GH_TOKEN = "ghp_..."                 ← GitHub PAT
 """
- 
+
 import ast
 import base64
 from datetime import datetime
 from urllib.parse import quote
- 
+
 import requests
 import streamlit as st
- 
- 
+
+
 # ============================================================
 # הגדרת עמוד
 # ============================================================
@@ -38,7 +38,7 @@ st.set_page_config(
     page_title="Streamlit Control Panel",
     initial_sidebar_state="collapsed",
 )
- 
+
 # ============================================================
 # CSS
 # ============================================================
@@ -144,7 +144,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
- 
+
 # ============================================================
 # State init
 # ============================================================
@@ -161,8 +161,8 @@ DEFAULTS = {
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
- 
- 
+
+
 # ============================================================
 # Helpers
 # ============================================================
@@ -171,22 +171,22 @@ def get_secret(key, default=""):
         return st.secrets[key]
     except (KeyError, FileNotFoundError, AttributeError):
         return default
- 
- 
+
+
 def clean_ascii(s):
     """מסיר תווים שאינם ASCII הדפיס - מונע UnicodeEncodeError."""
     if not s:
         return ""
     s = s.strip()
     return "".join(c for c in s if 32 <= ord(c) < 127)
- 
- 
+
+
 def active_config():
     if not st.session_state.active_app:
         return None
     return st.session_state.apps.get(st.session_state.active_app)
- 
- 
+
+
 # ============================================================
 # GitHub helpers
 # ============================================================
@@ -201,8 +201,8 @@ def gh_headers():
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "Streamlit-Control-Panel",
     }
- 
- 
+
+
 def validate_gh_token():
     try:
         headers = gh_headers()
@@ -216,8 +216,8 @@ def validate_gh_token():
         return False, str(e)
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
 def gh_api_url():
     cfg = active_config()
     path_encoded = quote(cfg["gh_path"])
@@ -226,16 +226,16 @@ def gh_api_url():
         f"/contents/{path_encoded}"
         f"?ref={cfg['gh_branch']}"
     )
- 
- 
+
+
 def fetch_current_code():
     res = requests.get(gh_api_url(), headers=gh_headers(), timeout=20)
     res.raise_for_status()
     data = res.json()
     code = base64.b64decode(data["content"]).decode("utf-8")
     return code, data["sha"]
- 
- 
+
+
 def commit_to_github(new_code, sha, instruction):
     cfg = active_config()
     safe_instruction = clean_ascii(instruction[:50]) or "update"
@@ -249,8 +249,8 @@ def commit_to_github(new_code, sha, instruction):
     res = requests.put(gh_api_url(), headers=gh_headers(), json=payload, timeout=30)
     res.raise_for_status()
     return res.json()["commit"]["sha"]
- 
- 
+
+
 # ============================================================
 # AI Providers - בדיקת זמינות
 # ============================================================
@@ -280,14 +280,14 @@ PROVIDER_INFO = {
         "note": "הקלאסי. דורש טעינת קרדיט."
     },
 }
- 
- 
+
+
 def provider_available(provider_id):
     """בודק אם כל ה-secrets הנדרשים לספק קיימים (לפני בדיקת תוקף)."""
     info = PROVIDER_INFO[provider_id]
     return all(bool(clean_ascii(get_secret(s, ""))) for s in info["secrets"])
- 
- 
+
+
 def validate_anthropic():
     api_key = clean_ascii(get_secret("ANTHROPIC_API_KEY", ""))
     if not api_key:
@@ -295,7 +295,7 @@ def validate_anthropic():
     if not api_key.startswith("sk-ant-"):
         return False, "המפתח לא מתחיל ב-'sk-ant-'"
     try:
-        # קריאה זולה - שולחים בקשה קטנה
+        # קריאה זולה - שולחים בקשה קטנה למודל הזול ביותר (Haiku 4.5)
         res = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -304,7 +304,7 @@ def validate_anthropic():
                 "content-type": "application/json",
             },
             json={
-                "model": "claude-3-5-haiku-latest",
+                "model": "claude-haiku-4-5",
                 "max_tokens": 5,
                 "messages": [{"role": "user", "content": "hi"}]
             },
@@ -319,8 +319,8 @@ def validate_anthropic():
         return False, f"שגיאה {res.status_code}: {res.text[:100]}"
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
 def validate_google():
     api_key = clean_ascii(get_secret("GOOGLE_API_KEY", ""))
     if not api_key:
@@ -337,8 +337,8 @@ def validate_google():
         return False, f"שגיאה {res.status_code}"
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
 def validate_azure():
     endpoint = clean_ascii(get_secret("AZURE_OPENAI_ENDPOINT", ""))
     api_key = clean_ascii(get_secret("AZURE_OPENAI_KEY", ""))
@@ -362,8 +362,8 @@ def validate_azure():
         return False, f"שגיאה {res.status_code}: {res.text[:100]}"
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
 def validate_openai():
     api_key = clean_ascii(get_secret("OPENAI_API_KEY", ""))
     if not api_key:
@@ -385,16 +385,16 @@ def validate_openai():
         return False, f"שגיאה {res.status_code}"
     except Exception as e:
         return False, f"שגיאת חיבור: {e}"
- 
- 
+
+
 VALIDATORS = {
     "anthropic": validate_anthropic,
     "google": validate_google,
     "azure": validate_azure,
     "openai": validate_openai,
 }
- 
- 
+
+
 # ============================================================
 # AI Providers - שליחת בקשה לעדכון קוד
 # ============================================================
@@ -408,8 +408,8 @@ def build_system_prompt():
         "If reference images are provided, use them as visual guidance. "
         "Output must be valid Python that runs as-is."
     )
- 
- 
+
+
 def build_user_text(original_code, instruction, extra_urls=None):
     user_text = f"Current code:\n\n{original_code}\n\n---\n\n"
     user_text += f"User instruction (may be in Hebrew):\n{instruction}\n\n"
@@ -419,16 +419,16 @@ def build_user_text(original_code, instruction, extra_urls=None):
             user_text += f"- {u}\n"
     user_text += "\nReturn the full updated file."
     return user_text
- 
- 
+
+
 def call_anthropic(original_code, instruction, images=None, extra_urls=None):
     api_key = clean_ascii(get_secret("ANTHROPIC_API_KEY", ""))
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY חסר")
- 
+
     user_text = build_user_text(original_code, instruction, extra_urls)
     content = [{"type": "text", "text": user_text}]
- 
+
     if images:
         for fname, img_bytes in images:
             mime = "image/png"
@@ -444,7 +444,7 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
                 "type": "image",
                 "source": {"type": "base64", "media_type": mime, "data": b64},
             })
- 
+
     res = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={
@@ -453,7 +453,7 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
             "content-type": "application/json",
         },
         json={
-            "model": "claude-3-5-sonnet-latest",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 8000,
             "system": build_system_prompt(),
             "messages": [{"role": "user", "content": content}],
@@ -462,16 +462,16 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
     )
     res.raise_for_status()
     return res.json()["content"][0]["text"]
- 
- 
+
+
 def call_google(original_code, instruction, images=None, extra_urls=None):
     api_key = clean_ascii(get_secret("GOOGLE_API_KEY", ""))
     if not api_key:
         raise ValueError("GOOGLE_API_KEY חסר")
- 
+
     user_text = build_user_text(original_code, instruction, extra_urls)
     parts = [{"text": build_system_prompt() + "\n\n" + user_text}]
- 
+
     if images:
         for fname, img_bytes in images:
             mime = "image/png"
@@ -484,7 +484,7 @@ def call_google(original_code, instruction, images=None, extra_urls=None):
                 mime = "image/webp"
             b64 = base64.b64encode(img_bytes).decode("utf-8")
             parts.append({"inline_data": {"mime_type": mime, "data": b64}})
- 
+
     res = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}",
         headers={"Content-Type": "application/json"},
@@ -496,18 +496,18 @@ def call_google(original_code, instruction, images=None, extra_urls=None):
     )
     res.raise_for_status()
     return res.json()["candidates"][0]["content"]["parts"][0]["text"]
- 
- 
+
+
 def call_azure(original_code, instruction, images=None, extra_urls=None):
     endpoint = clean_ascii(get_secret("AZURE_OPENAI_ENDPOINT", ""))
     api_key = clean_ascii(get_secret("AZURE_OPENAI_KEY", ""))
     deployment = clean_ascii(get_secret("AZURE_OPENAI_DEPLOYMENT", ""))
     if not (endpoint and api_key and deployment):
         raise ValueError("חסרים Secrets של Azure")
- 
+
     user_text = build_user_text(original_code, instruction, extra_urls)
     user_content = [{"type": "text", "text": user_text}]
- 
+
     if images:
         for fname, img_bytes in images:
             b64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -519,7 +519,7 @@ def call_azure(original_code, instruction, images=None, extra_urls=None):
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{b64}"},
             })
- 
+
     url = f"{endpoint.rstrip('/')}/openai/deployments/{deployment}/chat/completions?api-version=2024-02-01"
     res = requests.post(
         url,
@@ -536,18 +536,18 @@ def call_azure(original_code, instruction, images=None, extra_urls=None):
     )
     res.raise_for_status()
     return res.json()["choices"][0]["message"]["content"]
- 
- 
+
+
 def call_openai(original_code, instruction, images=None, extra_urls=None):
     from openai import OpenAI
     api_key = clean_ascii(get_secret("OPENAI_API_KEY", ""))
     if not api_key:
         raise ValueError("OPENAI_API_KEY חסר")
- 
+
     client = OpenAI(api_key=api_key)
     user_text = build_user_text(original_code, instruction, extra_urls)
     user_content = [{"type": "text", "text": user_text}]
- 
+
     if images:
         for fname, img_bytes in images:
             b64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -559,7 +559,7 @@ def call_openai(original_code, instruction, images=None, extra_urls=None):
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{b64}"},
             })
- 
+
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -569,23 +569,23 @@ def call_openai(original_code, instruction, images=None, extra_urls=None):
         temperature=0.1,
     )
     return completion.choices[0].message.content
- 
- 
+
+
 PROVIDER_CALLERS = {
     "anthropic": call_anthropic,
     "google": call_google,
     "azure": call_azure,
     "openai": call_openai,
 }
- 
- 
+
+
 def call_ai(original_code, instruction, images=None, extra_urls=None):
     provider = st.session_state.ai_provider
     caller = PROVIDER_CALLERS[provider]
     result = caller(original_code, instruction, images, extra_urls)
     return strip_code_fences(result)
- 
- 
+
+
 def strip_code_fences(text):
     text = text.strip()
     if text.startswith("```"):
@@ -595,31 +595,31 @@ def strip_code_fences(text):
             lines = lines[:-1]
         text = "\n".join(lines)
     return text.strip()
- 
- 
+
+
 def validate_python(code):
     try:
         ast.parse(code)
         return True, None
     except SyntaxError as e:
         return False, f"SyntaxError: {e.msg} (line {e.lineno})"
- 
- 
+
+
 def safe_iframe(url, height=None):
     if hasattr(st, "iframe"):
         st.iframe(url, height=height)
     else:
         import streamlit.components.v1 as components
         components.iframe(url, height=height or 800, scrolling=True)
- 
- 
+
+
 # ============================================================
 # מסך הגדרות
 # ============================================================
 if not st.session_state.configured:
     st.markdown('<div class="settings-screen">', unsafe_allow_html=True)
     st.markdown("# 🔧 הגדרות סביבת עבודה")
- 
+
     # ===== בדיקת GitHub =====
     raw_gh = get_secret("GH_TOKEN", "")
     has_gh = bool(clean_ascii(raw_gh))
@@ -627,14 +627,14 @@ if not st.session_state.configured:
     gh_info = ""
     if has_gh:
         gh_valid, gh_info = validate_gh_token()
- 
+
     # ===== בדיקת זמינות ספקי AI =====
     available_providers = {}
     for pid, info in PROVIDER_INFO.items():
         if provider_available(pid):
             valid, msg = VALIDATORS[pid]()
             available_providers[pid] = {"valid": valid, "msg": msg, "info": info}
- 
+
     # ===== שורת סטטוס =====
     col_s1, col_s2 = st.columns(2)
     with col_s1:
@@ -647,7 +647,7 @@ if not st.session_state.configured:
                     st.error(f"❌ {data['info']['name']}: {data['msg']}")
         else:
             st.error("❌ אין אף ספק AI מוגדר")
- 
+
     with col_s2:
         st.markdown("**🐙 GitHub**")
         if has_gh:
@@ -657,13 +657,13 @@ if not st.session_state.configured:
                 st.error(f"❌ {gh_info}")
         else:
             st.error("❌ GH_TOKEN חסר")
- 
+
     # ===== הוראות אם חסרים ספקים =====
     if not available_providers or not any(d["valid"] for d in available_providers.values()):
         with st.expander("ℹ️ איך להוסיף ספק AI? (4 אפשרויות)", expanded=True):
             st.markdown("""
             **לך ל-Streamlit > Manage app > Settings > Secrets והוסף לפחות אחד מאלה:**
- 
+
             **🟣 Anthropic Claude (מומלץ!)** - עובד מעולה בעברית, 5$ קרדיט חינם
             - הרשם ב-https://console.anthropic.com
             - צור API key
@@ -671,7 +671,7 @@ if not st.session_state.configured:
             ```toml
             ANTHROPIC_API_KEY = "sk-ant-..."
             ```
- 
+
             **🔵 Google Gemini** - חינמי עם מגבלות נדיבות
             - לך ל-https://aistudio.google.com/app/apikey
             - "Create API Key"
@@ -679,7 +679,7 @@ if not st.session_state.configured:
             ```toml
             GOOGLE_API_KEY = "AIza..."
             ```
- 
+
             **☁️ Azure OpenAI** - אם החברה שלך נותנת לך גישה
             - דרוש ממנהל ה-IT שיפעיל Azure OpenAI Service
             - הוסף ל-Secrets:
@@ -688,28 +688,28 @@ if not st.session_state.configured:
             AZURE_OPENAI_KEY = "..."
             AZURE_OPENAI_DEPLOYMENT = "gpt-4o"
             ```
- 
+
             **🟢 OpenAI** - הקלאסי
             ```toml
             OPENAI_API_KEY = "sk-..."
             ```
- 
+
             **בכל מקרה צריך גם:**
             ```toml
             GH_TOKEN = "ghp_..."
             ```
             """)
- 
+
     # ===== בחירת ספק פעיל =====
     valid_providers = {pid: d for pid, d in available_providers.items() if d["valid"]}
     if valid_providers:
         provider_options = list(valid_providers.keys())
         provider_labels = [valid_providers[p]["info"]["name"] for p in provider_options]
- 
+
         # אם הספק הנוכחי לא תקין - עבור לראשון התקין
         if st.session_state.ai_provider not in valid_providers:
             st.session_state.ai_provider = provider_options[0]
- 
+
         current_idx = provider_options.index(st.session_state.ai_provider)
         selected_label = st.selectbox(
             "ספק AI פעיל:",
@@ -722,9 +722,9 @@ if not st.session_state.configured:
             if valid_providers[pid]["info"]["name"] == selected_label:
                 st.session_state.ai_provider = pid
                 break
- 
+
     secrets_ok = bool(valid_providers) and gh_valid
- 
+
     # ===== רשימת אפליקציות =====
     if st.session_state.apps:
         st.markdown("### 📚 רשימת אפליקציות")
@@ -746,7 +746,7 @@ if not st.session_state.configured:
                     if not is_active and st.button("⭐ הפוך לפעיל", key=f"act_{app_name}"):
                         st.session_state.active_app = app_name
                         st.rerun()
- 
+
     # ===== הוספת אפליקציה חדשה =====
     has_apps = bool(st.session_state.apps)
     with st.expander("➕ הוסף אפליקציה חדשה", expanded=not has_apps):
@@ -760,7 +760,7 @@ if not st.session_state.configured:
         with col_b:
             st.markdown("**🎈 Streamlit Cloud**")
             sl_url_in = st.text_input("URL מלא:", placeholder="https://...streamlit.app/", key="new_url")
- 
+
         if st.button("💾 שמור אפליקציה", disabled=not secrets_ok):
             errors = []
             if not new_name.strip():
@@ -771,7 +771,7 @@ if not st.session_state.configured:
                 errors.append("⚠️ אל תכלול `https://github.com/`")
             if not sl_url_in.strip():
                 errors.append("⚠️ יש להזין URL")
- 
+
             if errors:
                 for e in errors:
                     st.error(e)
@@ -786,7 +786,7 @@ if not st.session_state.configured:
                     st.session_state.active_app = new_name.strip()
                 st.success(f"✅ '{new_name.strip()}' נשמרה!")
                 st.rerun()
- 
+
     # ===== כפתור התחל =====
     if st.session_state.apps and st.session_state.active_app:
         col_info, col_btn = st.columns([3, 1])
@@ -800,18 +800,18 @@ if not st.session_state.configured:
         st.warning("⚠️ יש לבחור אפליקציה פעילה (⭐)")
     else:
         st.warning("⚠️ הוסף לפחות אפליקציה אחת")
- 
+
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
- 
- 
+
+
 # ============================================================
 # המסך הראשי
 # ============================================================
 st.markdown('<div class="main-screen">', unsafe_allow_html=True)
- 
+
 col_work, col_preview = st.columns(2, gap="small")
- 
+
 # צד ימין: אזור עבודה
 with col_work:
     h_cols = st.columns([5, 0.8, 0.8])
@@ -860,10 +860,10 @@ with col_work:
             st.session_state.configured = False
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
- 
+
     provider_label = PROVIDER_INFO[st.session_state.ai_provider]["name"]
     st.caption(f"🎯 אפליקציה: **{st.session_state.active_app}** | AI: {provider_label}")
- 
+
     n_imgs = len(st.session_state.attached_images)
     n_urls = len(st.session_state.attached_urls)
     if n_imgs or n_urls:
@@ -873,15 +873,15 @@ with col_work:
         if n_urls:
             chip_html += f'<span class="attachment-chip">🔗 {n_urls} לינקים</span>'
         st.markdown(chip_html, unsafe_allow_html=True)
- 
+
     instruction = st.text_area(
         "הנחיות לשינוי הקוד:",
         placeholder="הקלד כאן את השינוי הרצוי...",
         height=130, key="instruction_input",
     )
- 
+
     submitted = st.button("שלח הנחיה", type="primary", use_container_width=True)
- 
+
     if submitted:
         if not instruction.strip():
             st.warning("⚠️ יש להזין הנחיה")
@@ -891,7 +891,7 @@ with col_work:
                     status.update(label="📥 שולף קוד מ-GitHub...")
                     original_code, file_sha = fetch_current_code()
                     st.write(f"✅ נשלפו {len(original_code):,} תווים")
- 
+
                     n_att = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
                     status.update(label=f"🤖 שולח ל-{provider_label} ({n_att} צרופות)...")
                     new_code = call_ai(
@@ -900,7 +900,7 @@ with col_work:
                         extra_urls=st.session_state.attached_urls,
                     )
                     st.write(f"✅ קוד מעודכן ({len(new_code):,} תווים)")
- 
+
                     status.update(label="🔍 בודק תחביר...")
                     ok, err = validate_python(new_code)
                     if not ok:
@@ -909,11 +909,11 @@ with col_work:
                             st.code(new_code, language="python")
                         st.stop()
                     st.write("✅ תקין")
- 
+
                     status.update(label="📤 מעלה ל-GitHub...")
                     commit_sha = commit_to_github(new_code, file_sha, instruction)
                     st.write(f"✅ Commit: `{commit_sha[:7]}`")
- 
+
                     st.session_state.history.append({
                         "ts": datetime.now().strftime("%H:%M:%S"),
                         "app": st.session_state.active_app,
@@ -924,9 +924,9 @@ with col_work:
                     st.session_state.attached_images = []
                     st.session_state.attached_urls = []
                     st.session_state.iframe_key += 1
- 
+
                     status.update(label="✅ הושלם! Streamlit יתפרס תוך 1-3 דקות", state="complete")
- 
+
                 except ValueError as e:
                     status.update(label="❌ הגדרות פגומות", state="error")
                     st.error(str(e))
@@ -953,13 +953,13 @@ with col_work:
                     else:
                         status.update(label=f"❌ {err_name}", state="error")
                         st.exception(e)
- 
+
     if st.session_state.history:
         with st.expander(f"📜 היסטוריה ({len(st.session_state.history)})"):
             for h in reversed(st.session_state.history[-10:]):
                 p = h.get("provider", "?")
                 st.markdown(f"`{h['ts']}` · `{h['commit']}` · [{p}] · {h['instruction'][:50]}")
- 
+
 # צד שמאל: תצוגת האפליקציה
 with col_preview:
     h_cols2 = st.columns([6, 0.8])
@@ -971,7 +971,7 @@ with col_preview:
             st.session_state.iframe_key += 1
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
- 
+
     cfg = active_config()
     if cfg:
         base_url = cfg["streamlit_url"].rstrip("/")
@@ -985,6 +985,5 @@ with col_preview:
         safe_iframe(embed_url, height=2000)
     else:
         st.error("לא הוגדרה אפליקציה פעילה")
- 
+
 st.markdown('</div>', unsafe_allow_html=True)
- 
