@@ -426,26 +426,90 @@ VALIDATORS = {
 # AI Providers - שליחת בקשה לעדכון קוד
 # ============================================================
 def build_system_prompt():
+    """Search-and-replace approach - much more reliable than full code rewrite."""
     return (
         "You are an expert Python/Streamlit developer. "
-        "Update the given Streamlit app code per the user's instruction. "
-        "Return ONLY the complete updated Python file. "
-        "Do NOT add explanations or wrap in markdown fences. "
-        "Preserve original structure and imports unless changes are required. "
-        "If reference images are provided, use them as visual guidance. "
-        "Output must be valid Python that runs as-is."
+        "Your task: produce EXACT search-and-replace patches to update the code per the user's instruction.\n\n"
+        "OUTPUT FORMAT (mandatory, no exceptions):\n"
+        "Return a JSON array of edit objects. Each object has 'find' and 'replace' keys.\n"
+        "Example:\n"
+        '[{"find": "old_text_exactly_as_in_file", "replace": "new_text"}]\n\n'
+        "RULES:\n"
+        "1. 'find' must match the file EXACTLY (preserve whitespace, indentation, newlines).\n"
+        "2. Each 'find' string must be UNIQUE in the file (include enough surrounding context).\n"
+        "3. Make MINIMAL changes - only what the instruction requires.\n"
+        "4. If the instruction is unclear or impossible, return: []\n"
+        "5. Use 3-10 lines of context per edit so matches are unique.\n"
+        "6. Do NOT wrap output in markdown fences. Output raw JSON only.\n"
+        "7. For Hebrew instructions, understand them but keep code/strings English unless told otherwise."
     )
 
 
 def build_user_text(original_code, instruction, extra_urls=None):
-    user_text = f"Current code:\n\n{original_code}\n\n---\n\n"
+    user_text = "Current code:\n\n"
+    user_text += "```python\n"
+    user_text += original_code
+    user_text += "\n```\n\n"
     user_text += f"User instruction (may be in Hebrew):\n{instruction}\n\n"
     if extra_urls:
-        user_text += "\nReference URLs:\n"
+        user_text += "Reference URLs:\n"
         for u in extra_urls:
             user_text += f"- {u}\n"
-    user_text += "\nReturn the full updated file."
+        user_text += "\n"
+    user_text += "Return a JSON array of search-and-replace edits to apply."
     return user_text
+
+
+def apply_edits(original_code, edits_json_text):
+    """
+    Apply a list of {find, replace} edits to the code.
+    Returns (new_code, error_message). error_message=None on success.
+    """
+    import json as _json
+    # Parse JSON (with markdown fence stripping as safety net)
+    text = edits_json_text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    try:
+        edits = _json.loads(text)
+    except _json.JSONDecodeError as e:
+        return None, f"AI returned invalid JSON: {e}"
+
+    if not isinstance(edits, list):
+        return None, "AI returned non-list response"
+
+    if len(edits) == 0:
+        return None, "AI returned empty edit list (couldn't understand instruction)"
+
+    new_code = original_code
+    applied = 0
+    failures = []
+    for i, edit in enumerate(edits):
+        if not isinstance(edit, dict) or "find" not in edit or "replace" not in edit:
+            failures.append(f"Edit #{i+1}: missing find/replace keys")
+            continue
+        find_str = edit["find"]
+        replace_str = edit["replace"]
+        count = new_code.count(find_str)
+        if count == 0:
+            failures.append(f"Edit #{i+1}: 'find' string not in file")
+            continue
+        if count > 1:
+            failures.append(f"Edit #{i+1}: 'find' matches {count} places (must be unique)")
+            continue
+        new_code = new_code.replace(find_str, replace_str)
+        applied += 1
+
+    if applied == 0:
+        return None, "No edits could be applied:\n" + "\n".join(failures)
+    if failures:
+        return new_code, f"Applied {applied}/{len(edits)} edits. Failures:\n" + "\n".join(failures)
+    return new_code, None
 
 
 def call_anthropic(original_code, instruction, images=None, extra_urls=None):
@@ -481,7 +545,7 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
         },
         json={
             "model": "claude-opus-4-7",
-            "max_tokens": 16000,
+            "max_tokens": 8000,
             "system": build_system_prompt(),
             "messages": [{"role": "user", "content": content}],
         },
@@ -608,10 +672,14 @@ PROVIDER_CALLERS = {
 
 
 def call_ai(original_code, instruction, images=None, extra_urls=None):
+    """
+    Returns the AI's raw response (expected: JSON array of edits).
+    Does NOT apply the edits - that's done separately so the caller can show errors.
+    """
     provider = st.session_state.ai_provider
     caller = PROVIDER_CALLERS[provider]
     result = caller(original_code, instruction, images, extra_urls)
-    return strip_code_fences(result)
+    return result
 
 
 def strip_code_fences(text):
@@ -922,35 +990,63 @@ with col_work:
 
                     n_att = len(st.session_state.attached_images) + len(st.session_state.attached_urls)
                     status.update(label=f"🤖 שולח ל-{provider_label} ({n_att} צרופות)...")
-                    new_code = call_ai(
+                    ai_response = call_ai(
                         original_code, instruction,
                         images=st.session_state.attached_images,
                         extra_urls=st.session_state.attached_urls,
                     )
-                    st.write(f"✅ קוד מעודכן ({len(new_code):,} תווים)")
+                    st.write(f"✅ AI החזיר תגובה ({len(ai_response):,} תווים)")
 
-                    status.update(label="🔍 בודק תחביר...")
-                    ok, err = validate_python(new_code)
-                    if not ok:
-                        status.update(label=f"❌ קוד פגום: {err}", state="error")
+                    status.update(label="🔧 מחיל שינויים על הקוד...")
+                    new_code, edit_err = apply_edits(original_code, ai_response)
+
+                    if new_code is None:
+                        # מצב כשלון מוחלט - שום שינוי לא יושם
+                        status.update(label=f"❌ שינויים לא הוחלו: {edit_err}", state="error")
                         st.warning(
-                            "⚠️ ה-AI החזיר קוד שבור. בדרך כלל זה קורה כשהקוד ארוך מדי "
-                            "וה-AI לא הספיק לסיים. נסה שוב או חלק את ההנחיה לחלקים קטנים."
+                            "⚠️ ה-AI לא הצליח לזהות איפה לבצע את השינוי. "
+                            "נסה להיות יותר ספציפי או להעלות תמונה."
                         )
-                        with st.expander("📄 הקוד שהתקבל (לבדיקה)"):
-                            # תצוגה גלילתית באמצעות div עם גובה קבוע
+                        with st.expander("📄 תגובה גולמית של ה-AI (לבדיקה)"):
                             st.markdown(
                                 f'<div style="max-height:400px;overflow-y:auto;'
                                 f'border:1px solid #444;border-radius:6px;padding:10px;'
                                 f'background:#0e1117;">'
                                 f'<pre style="margin:0;color:#FAFAFA;font-size:11px;'
                                 f'white-space:pre-wrap;direction:ltr;text-align:left;">'
-                                f'{new_code[:50000].replace("<", "&lt;").replace(">", "&gt;")}'
+                                f'{ai_response[:20000].replace("<", "&lt;").replace(">", "&gt;")}'
                                 f'</pre></div>',
                                 unsafe_allow_html=True,
                             )
                         st.stop()
-                    st.write("✅ תקין")
+
+                    if edit_err:
+                        # מצב חלקי - חלק מהשינויים הוחלו
+                        st.warning(f"⚠️ {edit_err}")
+
+                    st.write(f"✅ קוד מעודכן ({len(new_code):,} תווים, שינוי: {len(new_code) - len(original_code):+,})")
+
+                    status.update(label="🔍 בודק תחביר Python...")
+                    ok, err = validate_python(new_code)
+                    if not ok:
+                        status.update(label=f"❌ קוד פגום: {err}", state="error")
+                        st.warning(
+                            "⚠️ הקוד אחרי החלת השינויים אינו תקין מבחינת Python. "
+                            "אנא נסה הנחיה אחרת או יותר ספציפית."
+                        )
+                        with st.expander("📄 השינויים שה-AI ביקש לבצע"):
+                            st.markdown(
+                                f'<div style="max-height:400px;overflow-y:auto;'
+                                f'border:1px solid #444;border-radius:6px;padding:10px;'
+                                f'background:#0e1117;">'
+                                f'<pre style="margin:0;color:#FAFAFA;font-size:11px;'
+                                f'white-space:pre-wrap;direction:ltr;text-align:left;">'
+                                f'{ai_response[:20000].replace("<", "&lt;").replace(">", "&gt;")}'
+                                f'</pre></div>',
+                                unsafe_allow_html=True,
+                            )
+                        st.stop()
+                    st.write("✅ תחביר תקין")
 
                     status.update(label="📤 מעלה ל-GitHub...")
                     commit_sha = commit_to_github(new_code, file_sha, instruction)
