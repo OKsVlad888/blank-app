@@ -136,7 +136,34 @@ st.markdown(
         div[data-testid="stAlert"] p { font-size: 12px !important; margin: 0 !important; }
         div[data-testid="stExpander"] { border: 1px solid #3a3a3a; border-radius: 6px; margin: 2px 0 !important; }
         div[data-testid="stExpander"] summary { padding: 4px 10px !important; font-size: 12px !important; }
-        div[data-testid="stExpander"] details > div { padding: 6px 10px !important; }
+        div[data-testid="stExpander"] details > div {
+            padding: 6px 10px !important;
+            max-height: 350px !important;
+            overflow-y: auto !important;
+            scrollbar-width: thin !important;
+        }
+        div[data-testid="stExpander"] details > div::-webkit-scrollbar {
+            display: block !important;
+            width: 8px !important;
+        }
+        div[data-testid="stExpander"] details > div::-webkit-scrollbar-thumb {
+            background: #444 !important;
+            border-radius: 4px !important;
+        }
+        /* Scroll גם בתוך status widget לתוכן ארוך */
+        div[data-testid="stStatusWidget"] details > div {
+            max-height: 400px !important;
+            overflow-y: auto !important;
+            scrollbar-width: thin !important;
+        }
+        div[data-testid="stStatusWidget"] details > div::-webkit-scrollbar {
+            display: block !important;
+            width: 8px !important;
+        }
+        div[data-testid="stStatusWidget"] details > div::-webkit-scrollbar-thumb {
+            background: #444 !important;
+            border-radius: 4px !important;
+        }
         div[data-testid="stVerticalBlock"] > div[data-testid="element-container"] { margin-bottom: 3px !important; }
         hr { margin: 4px 0 !important; }
         .settings-screen { font-size: 13px; }
@@ -453,12 +480,12 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
             "content-type": "application/json",
         },
         json={
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 8000,
+            "model": "claude-opus-4-7",
+            "max_tokens": 16000,
             "system": build_system_prompt(),
             "messages": [{"role": "user", "content": content}],
         },
-        timeout=120,
+        timeout=300,
     )
     res.raise_for_status()
     return res.json()["content"][0]["text"]
@@ -490,9 +517,9 @@ def call_google(original_code, instruction, images=None, extra_urls=None):
         headers={"Content-Type": "application/json"},
         json={
             "contents": [{"parts": parts}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8000},
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 16000},
         },
-        timeout=120,
+        timeout=300,
     )
     res.raise_for_status()
     return res.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -530,9 +557,9 @@ def call_azure(original_code, instruction, images=None, extra_urls=None):
                 {"role": "user", "content": user_content},
             ],
             "temperature": 0.1,
-            "max_tokens": 8000,
+            "max_tokens": 16000,
         },
-        timeout=120,
+        timeout=300,
     )
     res.raise_for_status()
     return res.json()["choices"][0]["message"]["content"]
@@ -567,6 +594,7 @@ def call_openai(original_code, instruction, images=None, extra_urls=None):
             {"role": "user", "content": user_content},
         ],
         temperature=0.1,
+        max_tokens=16000,
     )
     return completion.choices[0].message.content
 
@@ -905,8 +933,22 @@ with col_work:
                     ok, err = validate_python(new_code)
                     if not ok:
                         status.update(label=f"❌ קוד פגום: {err}", state="error")
-                        with st.expander("הקוד שהתקבל:"):
-                            st.code(new_code, language="python")
+                        st.warning(
+                            "⚠️ ה-AI החזיר קוד שבור. בדרך כלל זה קורה כשהקוד ארוך מדי "
+                            "וה-AI לא הספיק לסיים. נסה שוב או חלק את ההנחיה לחלקים קטנים."
+                        )
+                        with st.expander("📄 הקוד שהתקבל (לבדיקה)"):
+                            # תצוגה גלילתית באמצעות div עם גובה קבוע
+                            st.markdown(
+                                f'<div style="max-height:400px;overflow-y:auto;'
+                                f'border:1px solid #444;border-radius:6px;padding:10px;'
+                                f'background:#0e1117;">'
+                                f'<pre style="margin:0;color:#FAFAFA;font-size:11px;'
+                                f'white-space:pre-wrap;direction:ltr;text-align:left;">'
+                                f'{new_code[:50000].replace("<", "&lt;").replace(">", "&gt;")}'
+                                f'</pre></div>',
+                                unsafe_allow_html=True,
+                            )
                         st.stop()
                     st.write("✅ תקין")
 
