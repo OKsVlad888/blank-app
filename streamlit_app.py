@@ -428,20 +428,25 @@ VALIDATORS = {
 def build_system_prompt():
     """Search-and-replace approach - much more reliable than full code rewrite."""
     return (
-        "You are an expert Python/Streamlit developer. "
+        "You are an expert Python/Streamlit/JavaScript developer. "
         "Your task: produce EXACT search-and-replace patches to update the code per the user's instruction.\n\n"
-        "OUTPUT FORMAT (mandatory, no exceptions):\n"
-        "Return a JSON array of edit objects. Each object has 'find' and 'replace' keys.\n"
-        "Example:\n"
-        '[{"find": "old_text_exactly_as_in_file", "replace": "new_text"}]\n\n'
-        "RULES:\n"
-        "1. 'find' must match the file EXACTLY (preserve whitespace, indentation, newlines).\n"
-        "2. Each 'find' string must be UNIQUE in the file (include enough surrounding context).\n"
-        "3. Make MINIMAL changes - only what the instruction requires.\n"
-        "4. If the instruction is unclear or impossible, return: []\n"
-        "5. Use 3-10 lines of context per edit so matches are unique.\n"
-        "6. Do NOT wrap output in markdown fences. Output raw JSON only.\n"
-        "7. For Hebrew instructions, understand them but keep code/strings English unless told otherwise."
+        "CRITICAL OUTPUT RULES:\n"
+        "1. Output MUST start with '[' (open bracket) - no preamble, no explanation, no markdown.\n"
+        "2. Output MUST be a valid JSON array of edit objects.\n"
+        "3. Each edit has exactly two keys: 'find' and 'replace' (both strings).\n"
+        "4. NO text before the '[' character. NO text after the ']' character.\n"
+        "5. If you want to think, do it internally - the user sees only the final JSON.\n\n"
+        "EXAMPLE OUTPUT (this exact format):\n"
+        '[{"find": "old text here", "replace": "new text here"}]\n\n'
+        "EDIT RULES:\n"
+        "- 'find' must match the file EXACTLY (preserve whitespace, indentation, newlines).\n"
+        "- Each 'find' string must be UNIQUE in the file (include enough surrounding context if needed).\n"
+        "- Make MINIMAL changes - only what the instruction requires.\n"
+        "- If the instruction is unclear or impossible, return: []\n"
+        "- Use 3-10 lines of context per edit so matches are unique.\n"
+        "- Inside JSON strings, escape newlines as \\n and quotes as \\\".\n"
+        "- For Hebrew instructions, understand them but keep code/strings English unless told otherwise.\n"
+        "- The code may contain JavaScript inside Python triple-quoted strings - treat that as part of the file."
     )
 
 
@@ -460,32 +465,92 @@ def build_user_text(original_code, instruction, extra_urls=None):
     return user_text
 
 
+def extract_json_array(text):
+    """
+    Extracts a JSON array from text that may contain prose before/after.
+    Returns the JSON string, or None if not found.
+    """
+    import re
+    text = text.strip()
+
+    # Strip markdown code fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Find end fence
+        end_idx = None
+        for i in range(1, len(lines)):
+            if lines[i].strip().startswith("```"):
+                end_idx = i
+                break
+        if end_idx:
+            text = "\n".join(lines[1:end_idx]).strip()
+        else:
+            text = "\n".join(lines[1:]).strip()
+
+    # If the text is already pure JSON starting with [, return it
+    if text.startswith("["):
+        return text
+
+    # Search for a JSON array - find the FIRST '[' that opens at top level
+    # and matching ']' that closes it
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "[":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0 and start is not None:
+                return text[start:i + 1]
+
+    return None
+
+
 def apply_edits(original_code, edits_json_text):
     """
     Apply a list of {find, replace} edits to the code.
     Returns (new_code, error_message). error_message=None on success.
+
+    Tolerates:
+    - Markdown code fences
+    - Prose text before/after the JSON array
+    - Minor whitespace differences in 'find' strings (fallback matching)
     """
     import json as _json
-    # Parse JSON (with markdown fence stripping as safety net)
-    text = edits_json_text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
 
+    # Step 1: Extract JSON from response
+    json_text = extract_json_array(edits_json_text)
+    if json_text is None:
+        return None, "AI response did not contain a JSON array"
+
+    # Step 2: Parse JSON
     try:
-        edits = _json.loads(text)
+        edits = _json.loads(json_text)
     except _json.JSONDecodeError as e:
-        return None, f"AI returned invalid JSON: {e}"
+        return None, f"Invalid JSON: {e}"
 
     if not isinstance(edits, list):
-        return None, "AI returned non-list response"
+        return None, "Response is not a JSON list"
 
     if len(edits) == 0:
         return None, "AI returned empty edit list (couldn't understand instruction)"
 
+    # Step 3: Apply edits
     new_code = original_code
     applied = 0
     failures = []
@@ -495,15 +560,56 @@ def apply_edits(original_code, edits_json_text):
             continue
         find_str = edit["find"]
         replace_str = edit["replace"]
+
+        # Exact match attempt
         count = new_code.count(find_str)
-        if count == 0:
-            failures.append(f"Edit #{i+1}: 'find' string not in file")
+        if count == 1:
+            new_code = new_code.replace(find_str, replace_str)
+            applied += 1
             continue
+
         if count > 1:
             failures.append(f"Edit #{i+1}: 'find' matches {count} places (must be unique)")
             continue
-        new_code = new_code.replace(find_str, replace_str)
-        applied += 1
+
+        # Fallback 1: try with normalized whitespace
+        # (collapse runs of whitespace to single space in both texts for matching)
+        import re
+        norm_find = re.sub(r"\s+", " ", find_str.strip())
+        # Search by normalizing on-the-fly
+        norm_code = re.sub(r"\s+", " ", new_code)
+        norm_count = norm_code.count(norm_find)
+        if norm_count == 1:
+            # Find the actual location in original
+            # Walk through new_code, tracking normalized position
+            target_normalized_start = norm_code.find(norm_find)
+            target_normalized_end = target_normalized_start + len(norm_find)
+            # Map normalized indices back to original indices
+            orig_idx, norm_idx = 0, 0
+            actual_start = actual_end = None
+            while orig_idx < len(new_code) and norm_idx <= target_normalized_end:
+                if norm_idx == target_normalized_start and actual_start is None:
+                    actual_start = orig_idx
+                if norm_idx == target_normalized_end and actual_end is None:
+                    actual_end = orig_idx
+                    break
+                ch = new_code[orig_idx]
+                if ch.isspace():
+                    # Skip following whitespace in original; advance one in normalized
+                    while orig_idx < len(new_code) and new_code[orig_idx].isspace():
+                        orig_idx += 1
+                    norm_idx += 1
+                else:
+                    orig_idx += 1
+                    norm_idx += 1
+            if actual_end is None:
+                actual_end = orig_idx
+            if actual_start is not None and actual_end is not None and actual_start < actual_end:
+                new_code = new_code[:actual_start] + replace_str + new_code[actual_end:]
+                applied += 1
+                continue
+
+        failures.append(f"Edit #{i+1}: 'find' string not in file (even after whitespace normalization)")
 
     if applied == 0:
         return None, "No edits could be applied:\n" + "\n".join(failures)
@@ -547,12 +653,20 @@ def call_anthropic(original_code, instruction, images=None, extra_urls=None):
             "model": "claude-opus-4-7",
             "max_tokens": 8000,
             "system": build_system_prompt(),
-            "messages": [{"role": "user", "content": content}],
+            "messages": [
+                {"role": "user", "content": content},
+                # Prefill - forces Claude to start response with '[' (no preamble)
+                {"role": "assistant", "content": "["},
+            ],
         },
         timeout=300,
     )
     res.raise_for_status()
-    return res.json()["content"][0]["text"]
+    # Since we prefilled with '[', we need to prepend it to the response
+    response_text = res.json()["content"][0]["text"]
+    if not response_text.lstrip().startswith("["):
+        response_text = "[" + response_text
+    return response_text
 
 
 def call_google(original_code, instruction, images=None, extra_urls=None):
