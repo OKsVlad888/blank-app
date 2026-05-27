@@ -1,4 +1,4 @@
- PY
+
 """
 Streamlit Control Panel - Multi-Provider AI Edition
 ====================================================
